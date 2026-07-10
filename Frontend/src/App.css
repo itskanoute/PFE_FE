@@ -1,0 +1,345 @@
+/* App.css - Specific layouts for EduManage Auth */
+
+/* Header */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 2rem;
+  background-color: var(--bg-app);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--primary-dark);
+  font-weight: 700;
+  font-size: 1.25rem;
+  text-decoration: none;
+}
+
+.logo-container:hover {
+  text-decoration: none;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.header-link {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.profile-pic {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Layout */
+.auth-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3rem 1rem;
+}
+
+.auth-card {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: var(--shadow-sm);
+}
+
+.auth-title {
+  font-size: 2rem;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.auth-subtitle {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin-bottom: 2.5rem;
+  line-height: 1.6;
+}
+
+/* Footer */
+.app-footer {
+  padding: 2rem;
+  background-color: var(--bg-app);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.footer-links {
+  display: flex;
+  gap: 2rem;
+}
+
+.footer-link {
+  color: var(--text-secondary);
+}
+
+.footer-version {
+  color: #9ca3af;
+  font-size: 0.75rem;
+}
+
+/* Specific to RegisterChoice */
+.choice-layout {
+  max-width: 900px;
+  width: 100%;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+}
+
+@media (min-width: 768px) {
+  .choice-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.choice-card {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.choice-icon-bg {
+  width: 48px;
+  height: 48px;
+  background-color: #f3e8ff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  color: var(--primary-dark);
+}
+
+.choice-icon-bg.student {
+  background-color: #fef3c7;
+}
+
+.choice-card h3 {
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.choice-card p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+  flex: 1;
+}
+
+.choice-card-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  color: var(--primary-dark);
+  text-decoration: none;
+}
+
+.choice-card-link:hover {
+  text-decoration: underline;
+}
+
+.choice-watermark {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  opacity: 0.05;
+  color: var(--primary-dark);
+}
+
+.promo-banner {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  position: relative;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  padding: 2.5rem;
+  background-color: #2e264f;
+  background-image: linear-gradient(to right, rgba(15, 5, 53, 0.9), rgba(15, 5, 53, 0.4)), url('https://images.unsplash.com/photo-1522071820081-009f0129c71c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80');
+  background-size: cover;
+  background-position: center;
+  color: white;
+}
+
+.promo-content {
+  max-width: 60%;
+}
+
+.promo-content h2 {
+  color: white;
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.promo-content p {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  opacity: 0.9;
+}
+
+/* Specific to RegisterSchool */
+.register-school-container {
+  display: flex;
+  gap: 4rem;
+  width: 100%;
+  max-width: 1000px;
+}
+
+.register-info-panel {
+  flex: 1;
+}
+
+.register-form-panel {
+  flex: 1.5;
+}
+
+.check-list {
+  list-style: none;
+  margin-top: 2rem;
+}
+
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.check-icon {
+  color: var(--success-color);
+}
+
+.section-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  margin: 2rem 0 1.5rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.section-title:first-child {
+  margin-top: 0;
+}
+
+.upload-box {
+  border: 1px dashed #cbd5e1;
+  background-color: #f8fafc;
+  border-radius: var(--radius-sm);
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.upload-box p {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.upload-box span {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.terms-text {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 1rem;
+  line-height: 1.5;
+}
+
+.terms-text a {
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+.divider {
+  border-top: 1px solid var(--border-color);
+  margin: 2rem 0;
+}
+
+/* Specific to RegisterStudent */
+.register-student-card {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: var(--shadow-sm);
+}
+
+.helper-text {
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 768px) {
+  .register-school-container {
+    flex-direction: column;
+    gap: 2rem;
+  }
+  
+  .promo-banner {
+    background-image: linear-gradient(to right, rgba(15, 5, 53, 0.95), rgba(15, 5, 53, 0.8)), url('https://images.unsplash.com/photo-1522071820081-009f0129c71c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80');
+  }
+  
+  .promo-content {
+    max-width: 100%;
+  }
+}
