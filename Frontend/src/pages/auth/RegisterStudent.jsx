@@ -1,8 +1,12 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { GraduationCap, ArrowRight, HelpCircle, ChevronDown } from 'lucide-react';
+import { getDashboardPath, getSchools, registerStudent, saveAuth } from '../../services/api';
 
 const RegisterStudent = () => {
+  const navigate = useNavigate();
+  const [schools, setSchools] = useState([]);
+  const [selectedSchool, setSelectedSchool] = useState(null);
   const [formData, setFormData] = useState({
     schoolId: '',
     studentId: '',
@@ -14,19 +18,48 @@ const RegisterStudent = () => {
     password: '',
     confirmPassword: ''
   });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [loadingSchools, setLoadingSchools] = useState(true);
+
+  useEffect(() => {
+    getSchools()
+      .then(setSchools)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoadingSchools(false));
+  }, []);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.id]: e.target.value });
+    const { id, value } = e.target;
+    setFormData({ ...formData, [id]: value });
+
+    if (id === 'schoolId') {
+      const school = schools.find((s) => String(s.id) === value);
+      setSelectedSchool(school || null);
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Register student:', formData);
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      const data = await registerStudent(formData);
+      saveAuth(data);
+      setSuccess(data.message);
+      setTimeout(() => navigate(getDashboardPath(data.user.role)), 1500);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="auth-layout">
-      {/* Header */}
       <header className="app-header">
         <Link to="/" className="logo-container">
           <GraduationCap size={28} />
@@ -38,7 +71,6 @@ const RegisterStudent = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="auth-content">
         <div className="register-student-card">
           <h1 className="auth-title" style={{ textAlign: 'left', marginBottom: '1rem', fontSize: '2.25rem', lineHeight: '1.2' }}>
@@ -48,6 +80,18 @@ const RegisterStudent = () => {
             Veuillez remplir les informations ci-dessous pour créer votre compte.
           </p>
 
+          {error && (
+            <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '12px', borderRadius: '6px', marginBottom: '1rem', fontSize: '14px' }}>
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div style={{ background: '#ecfdf5', color: '#047857', padding: '12px', borderRadius: '6px', marginBottom: '1rem', fontSize: '14px' }}>
+              {success}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit}>
             <div className="form-group" style={{ marginBottom: '0.5rem' }}>
               <label className="form-label" htmlFor="schoolId">École</label>
@@ -56,28 +100,40 @@ const RegisterStudent = () => {
                   id="schoolId" 
                   className="form-input" 
                   onChange={handleChange} 
+                  value={formData.schoolId}
                   required 
-                  defaultValue=""
+                  disabled={loadingSchools}
                   style={{ appearance: 'none', paddingRight: '36px' }}
                 >
-                  <option value="" disabled>Sélectionnez votre établissement</option>
-                  <option value="1">ESCP Business School</option>
-                  <option value="2">Sorbonne Université</option>
+                  <option value="" disabled>
+                    {loadingSchools ? 'Chargement des écoles...' : 'Sélectionnez votre établissement'}
+                  </option>
+                  {schools.map((school) => (
+                    <option key={school.id} value={school.id}>
+                      {school.name}
+                    </option>
+                  ))}
                 </select>
                 <div className="input-icon-right" style={{ pointerEvents: 'none' }}>
                   <ChevronDown size={18} color="#0f0535" />
                 </div>
               </div>
             </div>
+
+            {selectedSchool && (
+              <div className="helper-text" style={{ marginBottom: '1rem', color: '#047857', fontWeight: 500 }}>
+                Email requis : @{selectedSchool.email_domain}
+              </div>
+            )}
             
             <div className="helper-text" style={{ marginBottom: '1.5rem', color: '#0f0535', fontWeight: 500 }}>
               <HelpCircle size={14} color="#0f0535" />
-              <span>Votre école n'est pas listée ?</span>
+              <span>Votre école n'est pas listée ? Contactez l'administration de votre école.</span>
             </div>
 
             <div className="form-group">
               <label className="form-label" htmlFor="studentId">Numéro étudiant</label>
-              <input id="studentId" type="text" className="form-input" placeholder="Ex: 2023-A45" onChange={handleChange} required />
+              <input id="studentId" type="text" className="form-input" placeholder="Ex: 2023-A45" value={formData.studentId} onChange={handleChange} required />
             </div>
 
             <div className="form-group">
@@ -87,8 +143,8 @@ const RegisterStudent = () => {
                   id="year" 
                   className="form-input" 
                   onChange={handleChange} 
+                  value={formData.year}
                   required 
-                  defaultValue=""
                   style={{ appearance: 'none', paddingRight: '36px' }}
                 >
                   <option value="" disabled>Niveau</option>
@@ -106,47 +162,45 @@ const RegisterStudent = () => {
 
             <div className="form-group">
               <label className="form-label" htmlFor="firstName">Prénom</label>
-              <input id="firstName" type="text" className="form-input" placeholder="Jean" onChange={handleChange} required />
+              <input id="firstName" type="text" className="form-input" placeholder="Jean" value={formData.firstName} onChange={handleChange} required />
             </div>
 
             <div className="form-group">
               <label className="form-label" htmlFor="lastName">Nom</label>
-              <input id="lastName" type="text" className="form-input" placeholder="Dupont" onChange={handleChange} required />
+              <input id="lastName" type="text" className="form-input" placeholder="Dupont" value={formData.lastName} onChange={handleChange} required />
             </div>
 
             <div className="form-group">
               <label className="form-label" htmlFor="major">Filière / Spécialisation</label>
-              <input id="major" type="text" className="form-input" placeholder="Ex: Management des Systèmes d'I..." onChange={handleChange} required />
+              <input id="major" type="text" className="form-input" placeholder="Ex: Management des Systèmes d'I..." value={formData.major} onChange={handleChange} required />
             </div>
 
             <div className="form-group">
               <label className="form-label" htmlFor="email">Email école</label>
-              <input id="email" type="email" className="form-input" placeholder="prenom.nom@ecole.edu" onChange={handleChange} required />
+              <input id="email" type="email" className="form-input" placeholder="prenom.nom@ecole.edu" value={formData.email} onChange={handleChange} required />
             </div>
 
             <div className="form-group">
               <label className="form-label" htmlFor="password">Mot de passe</label>
-              <input id="password" type="password" className="form-input" onChange={handleChange} required minLength="8" />
+              <input id="password" type="password" className="form-input" value={formData.password} onChange={handleChange} required minLength="8" />
             </div>
 
             <div className="form-group" style={{ marginBottom: '2rem' }}>
               <label className="form-label" htmlFor="confirmPassword">Confirmation</label>
-              <input id="confirmPassword" type="password" className="form-input" onChange={handleChange} required minLength="8" />
+              <input id="confirmPassword" type="password" className="form-input" value={formData.confirmPassword} onChange={handleChange} required minLength="8" />
             </div>
 
-            <button type="submit" className="btn-primary" style={{ padding: '16px', fontSize: '16px' }}>
-              Finaliser l'inscription <ArrowRight size={20} />
+            <button type="submit" className="btn-primary" style={{ padding: '16px', fontSize: '16px' }} disabled={loading || loadingSchools}>
+              {loading ? 'Inscription...' : 'Finaliser l\'inscription'} <ArrowRight size={20} />
             </button>
             
             <p className="terms-text" style={{ marginTop: '1.5rem', padding: '0 1rem' }}>
               En vous inscrivant, vous acceptez nos <a href="#">Conditions d'Utilisation</a> et notre <a href="#">Politique de Confidentialité</a>.
             </p>
-
           </form>
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="app-footer">
         <Link to="/" className="logo-container" style={{ marginBottom: '1rem' }}>
           <GraduationCap size={24} />

@@ -1,19 +1,34 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { GraduationCap, Mail, Lock, Eye, ArrowRight } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { GraduationCap, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { getDashboardPath, login, saveAuth } from '../../services/api';
 
 const Login = () => {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    console.log('Login attempt with:', email);
+    setError('');
+    setLoading(true);
+
+    try {
+      const data = await login({ email: email.trim(), password: password.trim() });
+      saveAuth(data);
+      navigate(getDashboardPath(data.user.role));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="auth-layout">
-      {/* Header */}
       <header className="app-header" style={{ borderBottom: 'none', padding: '2rem 3rem' }}>
         <Link to="/" className="logo-container">
           <GraduationCap size={28} />
@@ -21,7 +36,6 @@ const Login = () => {
         </Link>
       </header>
 
-      {/* Main Content */}
       <main className="auth-content">
         <div className="auth-card" style={{ padding: '3rem', maxWidth: '460px' }}>
           <div className="text-center">
@@ -32,6 +46,12 @@ const Login = () => {
               Connectez-vous à votre espace de<br />gestion
             </p>
           </div>
+
+          {error && (
+            <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '12px', borderRadius: '6px', marginBottom: '1.5rem', fontSize: '14px' }}>
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleLogin}>
             <div className="form-group">
@@ -55,9 +75,9 @@ const Login = () => {
             <div className="form-group" style={{ marginBottom: '2rem' }}>
               <div className="flex justify-between items-center mb-2">
                 <label className="form-label" style={{ marginBottom: 0 }} htmlFor="password">Mot de passe</label>
-                <a href="#" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--primary-dark)' }}>
+                <Link to="/forgot-password" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--primary-dark)' }}>
                   Mot de passe oublié ?
-                </a>
+                </Link>
               </div>
               <div className="input-wrapper">
                 <div className="input-icon-left">
@@ -65,21 +85,27 @@ const Login = () => {
                 </div>
                 <input 
                   id="password"
-                  type="password" 
+                  type={showPassword ? 'text' : 'password'}
                   className="form-input has-icon-left has-icon-right" 
                   placeholder="••••••••" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-                <div className="input-icon-right">
-                  <Eye size={18} color="#0f0535" />
-                </div>
+                <button
+                  type="button"
+                  className="input-icon-right"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                  style={{ background: 'none', border: 'none', padding: 0 }}
+                >
+                  {showPassword ? <EyeOff size={18} color="#0f0535" /> : <Eye size={18} color="#0f0535" />}
+                </button>
               </div>
             </div>
 
-            <button type="submit" className="btn-primary" style={{ padding: '16px', fontSize: '16px', borderRadius: '4px' }}>
-              Se connecter <ArrowRight size={20} />
+            <button type="submit" className="btn-primary" style={{ padding: '16px', fontSize: '16px', borderRadius: '4px' }} disabled={loading}>
+              {loading ? 'Connexion...' : 'Se connecter'} <ArrowRight size={20} />
             </button>
           </form>
 
@@ -94,7 +120,6 @@ const Login = () => {
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="app-footer" style={{ borderTop: 'none', paddingBottom: '3rem' }}>
         <div className="footer-links" style={{ gap: '3rem', color: '#4b5563', fontWeight: 500 }}>
           <a href="#" className="footer-link">Aide</a>

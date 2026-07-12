@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { GraduationCap, CheckCircle2, CloudUpload, ArrowRight } from 'lucide-react';
+import { getDashboardPath, registerSchool, saveAuth } from '../../services/api';
 
 const RegisterSchool = () => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     schoolName: '',
     acronym: '',
@@ -15,19 +17,67 @@ const RegisterSchool = () => {
     password: '',
     confirmPassword: ''
   });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState('');
+  const alertRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const expectedDomain = formData.emailDomain.trim().replace(/^@+/, '').toLowerCase();
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.id]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleLogoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      setError('Format non autorisé. Utilisez PNG, JPG ou SVG.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Le logo ne doit pas dépasser 5 Mo.');
+      return;
+    }
+
+    setError('');
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoFile(null);
+    setLogoPreview('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Register school:', formData);
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      const data = await registerSchool(formData, logoFile);
+      saveAuth(data);
+      setSuccess(data.message);
+      setTimeout(() => navigate(getDashboardPath(data.user.role)), 1500);
+    } catch (err) {
+      setError(err.message);
+      alertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="auth-layout">
-      {/* Header */}
       <header className="app-header">
         <Link to="/" className="logo-container">
           <GraduationCap size={28} />
@@ -35,10 +85,8 @@ const RegisterSchool = () => {
         </Link>
       </header>
 
-      {/* Main Content */}
       <main className="auth-content" style={{ padding: '4rem 1rem' }}>
         <div className="register-school-container">
-          {/* Left Panel */}
           <div className="register-info-panel">
             <h1 className="auth-title" style={{ textAlign: 'left', marginBottom: '1.5rem' }}>
               Inscrivez votre<br />établissement
@@ -63,29 +111,38 @@ const RegisterSchool = () => {
             </ul>
           </div>
 
-          {/* Right Panel - Form */}
           <div className="register-form-panel">
-            <div className="auth-card" style={{ maxWidth: '100%' }}>
+            <div className="auth-card" style={{ maxWidth: '100%' }} ref={alertRef}>
+              {error && (
+                <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '12px', borderRadius: '6px', marginBottom: '1rem', fontSize: '14px' }}>
+                  {error}
+                </div>
+              )}
+
+              {success && (
+                <div style={{ background: '#ecfdf5', color: '#047857', padding: '12px', borderRadius: '6px', marginBottom: '1rem', fontSize: '14px' }}>
+                  {success}
+                </div>
+              )}
+
               <form onSubmit={handleSubmit}>
-                
-                {/* Section 1 */}
                 <h2 className="section-title">Identité de l'école</h2>
                 
                 <div className="form-group">
                   <label className="form-label" htmlFor="schoolName">Nom de l'école</label>
-                  <input id="schoolName" type="text" className="form-input" placeholder="ex: ESCP Business School" onChange={handleChange} required />
+                  <input id="schoolName" type="text" className="form-input" placeholder="ex: ESCP Business School" value={formData.schoolName} onChange={handleChange} required />
                 </div>
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="acronym">Sigle</label>
-                  <input id="acronym" type="text" className="form-input" placeholder="ex: ESCP" onChange={handleChange} required />
+                  <input id="acronym" type="text" className="form-input" placeholder="ex: ESCP" value={formData.acronym} onChange={handleChange} required />
                 </div>
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="emailDomain">Domaine email institutionnel</label>
                   <div className="input-wrapper">
                     <div className="input-icon-left" style={{ color: '#0f0535', fontWeight: 600 }}>@</div>
-                    <input id="emailDomain" type="text" className="form-input has-icon-left" placeholder="escp.eu" onChange={handleChange} required />
+                    <input id="emailDomain" type="text" className="form-input has-icon-left" placeholder="escp.eu" value={formData.emailDomain} onChange={handleChange} required />
                   </div>
                   <div className="helper-text" style={{ marginTop: '0.5rem', color: '#4b5563' }}>
                     Ceci permettra de valider automatiquement les inscriptions de vos étudiants.
@@ -94,69 +151,99 @@ const RegisterSchool = () => {
 
                 <div className="form-group">
                   <label className="form-label">Logo de l'établissement</label>
-                  <div className="upload-box">
-                    <CloudUpload size={28} color="#6b7280" />
-                    <p>Cliquez pour téléverser ou glissez-déposez</p>
-                    <span>PNG, JPG ou SVG (Max. 5MB)</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                    onChange={handleLogoSelect}
+                    style={{ display: 'none' }}
+                  />
+                  <div
+                    className="upload-box"
+                    onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    {logoPreview ? (
+                      <>
+                        <img src={logoPreview} alt="Aperçu du logo" style={{ maxHeight: '80px', maxWidth: '100%', objectFit: 'contain' }} />
+                        <span>{logoFile?.name}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleRemoveLogo(); }}
+                          style={{ fontSize: '0.75rem', color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          Supprimer
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <CloudUpload size={28} color="#6b7280" />
+                        <p>Cliquez pour téléverser ou glissez-déposez</p>
+                        <span>PNG, JPG ou SVG (Max. 5MB)</span>
+                      </>
+                    )}
                   </div>
                 </div>
 
-                {/* Section 2 */}
                 <h2 className="section-title">Localisation & Contact</h2>
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="address">Adresse</label>
-                  <input id="address" type="text" className="form-input" placeholder="Rue, numéro, quartier" onChange={handleChange} required />
+                  <input id="address" type="text" className="form-input" placeholder="Rue, numéro, quartier" value={formData.address} onChange={handleChange} required />
                 </div>
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="city">Ville</label>
-                  <input id="city" type="text" className="form-input" placeholder="Paris" onChange={handleChange} required />
+                  <input id="city" type="text" className="form-input" placeholder="Paris" value={formData.city} onChange={handleChange} required />
                 </div>
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="phone">Téléphone</label>
-                  <input id="phone" type="text" className="form-input" placeholder="+33 1 49 23 20 00" onChange={handleChange} required />
+                  <input id="phone" type="text" className="form-input" placeholder="+33 1 49 23 20 00" value={formData.phone} onChange={handleChange} required />
                 </div>
 
-                {/* Section 3 */}
                 <h2 className="section-title">Compte Administrateur Principal</h2>
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="contactName">Nom complet du contact admin</label>
-                  <input id="contactName" type="text" className="form-input" placeholder="Jean Dupont" onChange={handleChange} required />
+                  <input id="contactName" type="text" className="form-input" placeholder="Jean Dupont" value={formData.contactName} onChange={handleChange} required />
                 </div>
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="contactEmail">Email administrateur</label>
-                  <input id="contactEmail" type="email" className="form-input" placeholder="admin@escp.eu" onChange={handleChange} required />
+                  <input id="contactEmail" type="email" className="form-input" placeholder={expectedDomain ? `admin@${expectedDomain}` : 'admin@escp.eu'} value={formData.contactEmail} onChange={handleChange} required />
+                  {expectedDomain && (
+                    <div className="helper-text" style={{ marginTop: '0.5rem', color: '#047857' }}>
+                      Doit se terminer par @{expectedDomain}
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="password">Mot de passe</label>
-                  <input id="password" type="password" className="form-input" onChange={handleChange} required minLength="8" />
+                  <input id="password" type="password" className="form-input" value={formData.password} onChange={handleChange} required minLength="8" />
                 </div>
 
                 <div className="form-group mb-6">
                   <label className="form-label" htmlFor="confirmPassword">Confirmation</label>
-                  <input id="confirmPassword" type="password" className="form-input" onChange={handleChange} required minLength="8" />
+                  <input id="confirmPassword" type="password" className="form-input" value={formData.confirmPassword} onChange={handleChange} required minLength="8" />
                 </div>
 
-                <button type="submit" className="btn-primary" style={{ padding: '16px', fontSize: '16px' }}>
-                  Créer le compte école <ArrowRight size={20} />
+                <button type="submit" className="btn-primary" style={{ padding: '16px', fontSize: '16px' }} disabled={loading}>
+                  {loading ? 'Création en cours...' : 'Créer le compte école'} <ArrowRight size={20} />
                 </button>
                 
                 <p className="terms-text">
                   En cliquant sur ce bouton, vous acceptez nos <a href="#">conditions générales d'utilisation</a> et notre <a href="#">politique de confidentialité</a>.
                 </p>
-
               </form>
             </div>
           </div>
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="app-footer">
         <Link to="/" className="logo-container" style={{ marginBottom: '1rem' }}>
           <GraduationCap size={24} />

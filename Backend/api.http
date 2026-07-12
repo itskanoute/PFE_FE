@@ -1,0 +1,135 @@
+### EduManage — Tests API (REST Client / Thunder Client)
+### Ouvrir ce fichier dans Cursor/VS Code avec l'extension "REST Client"
+### ou copier les requêtes dans Postman / Insomnia
+
+@baseUrl = http://localhost:3000
+
+### ─── Santé ───────────────────────────────────────────────
+
+GET {{baseUrl}}/
+Accept: application/json
+
+###
+
+GET {{baseUrl}}/api/health
+Accept: application/json
+
+### ─── Écoles (utilisé par inscription étudiant) ───────────
+
+GET {{baseUrl}}/api/schools
+Accept: application/json
+
+###
+
+GET {{baseUrl}}/api/schools/1/filieres
+Accept: application/json
+
+### ─── Authentification ────────────────────────────────────
+
+# Connexion admin (compte de démo)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@escp.eu",
+  "password": "Password123!"
+}
+
+###
+
+# Connexion étudiant (compte de démo)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "lea.martin@escp.eu",
+  "password": "Password123!"
+}
+
+###
+
+# Connexion responsable (compte de démo)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "e.ettori@escp.eu",
+  "password": "Password123!"
+}
+
+###
+
+# Test erreur — mauvais mot de passe
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@escp.eu",
+  "password": "wrongpassword"
+}
+
+### ─── Test du token JWT ───────────────────────────────────
+### Étape 1 : lance la requête "loginAdmin" ci-dessous
+### Étape 2 : le token est récupéré automatiquement
+### Étape 3 : lance "getMe" pour vérifier le token
+
+# @name loginAdmin
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@escp.eu",
+  "password": "Password123!"
+}
+
+###
+
+# @name getMe
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{loginAdmin.response.body.token}}
+
+###
+
+# Test sans token → doit renvoyer 401
+GET {{baseUrl}}/api/auth/me
+
+###
+
+# Test avec un faux token → doit renvoyer 401
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer faux.token.invalide
+
+### ─── Inscriptions ────────────────────────────────────────
+
+POST {{baseUrl}}/api/auth/register/school
+Content-Type: application/json
+
+{
+  "schoolName": "EPITECH Lille",
+  "acronym": "EPI",
+  "emailDomain": "epitech.eu",
+  "address": "24 Place de la Bourse",
+  "city": "Lille",
+  "phone": "03 20 00 00 00",
+  "contactName": "Marie Curie",
+  "contactEmail": "admin@epitech.eu",
+  "password": "Password123!",
+  "confirmPassword": "Password123!"
+}
+
+###
+
+POST {{baseUrl}}/api/auth/register/student
+Content-Type: application/json
+
+{
+  "schoolId": 1,
+  "studentId": "20240099",
+  "year": "L3",
+  "firstName": "Paul",
+  "lastName": "Durand",
+  "major": "L3 Informatique",
+  "email": "paul.durand@escp.eu",
+  "password": "Password123!",
+  "confirmPassword": "Password123!"
+}
