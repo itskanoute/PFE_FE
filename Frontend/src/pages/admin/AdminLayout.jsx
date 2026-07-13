@@ -6,6 +6,7 @@ import {
   PlusCircle, HelpCircle, LogOut, Search,
   Bell, Menu, X
 } from 'lucide-react';
+import { clearAuth } from '../../services/api';
 import './admin.css';
 
 const sidebarLinks = [
@@ -20,6 +21,7 @@ const sidebarLinks = [
 
 const AdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef(null);
@@ -109,7 +111,7 @@ const AdminLayout = () => {
               <HelpCircle size={18} />
               Support
             </a>
-            <button className="sidebar-link logout" onClick={() => navigate('/login')} style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}>
+            <button className="sidebar-link logout" onClick={() => { clearAuth(); navigate('/login'); }} style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}>
               <LogOut size={18} />
               Logout
             </button>
@@ -132,7 +134,12 @@ const AdminLayout = () => {
 
           <div className="admin-search">
             <Search size={16} color="#9ca3af" />
-            <input type="text" placeholder={getSearchPlaceholder()} />
+            <input
+              type="text"
+              placeholder={getSearchPlaceholder()}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
 
           <div className="admin-header-right" style={{ position: 'relative' }} ref={notifRef}>
@@ -197,7 +204,7 @@ const AdminLayout = () => {
 
         {/* Page Content */}
         <main className="admin-page">
-          <Outlet />
+          <Outlet context={{ searchTerm }} />
         </main>
       </div>
 

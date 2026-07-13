@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "fix-passwords": "node scripts/fix-demo-passwords.js",
-    "migrate:password-reset": "node scripts/migrate-password-reset.js"
+    "migrate:password-reset": "node scripts/migrate-password-reset.js",
+    "seed:admin-demo": "node scripts/seed-admin-demo.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

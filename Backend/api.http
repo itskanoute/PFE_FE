@@ -133,3 +133,34 @@ Content-Type: application/json
   "password": "Password123!",
   "confirmPassword": "Password123!"
 }
+
+### ─── Admin (token admin requis) ──────────────────────────
+
+GET {{baseUrl}}/api/admin/dashboard
+Authorization: Bearer {{loginAdmin.response.body.token}}
+
+###
+
+GET {{baseUrl}}/api/admin/responsables
+Authorization: Bearer {{loginAdmin.response.body.token}}
+
+###
+
+# Supprimer un responsable (remplacer 2 par l'id cible)
+DELETE {{baseUrl}}/api/admin/responsables/2
+Authorization: Bearer {{loginAdmin.response.body.token}}
+
+###
+
+GET {{baseUrl}}/api/admin/students
+Authorization: Bearer {{loginAdmin.response.body.token}}
+
+###
+
+GET {{baseUrl}}/api/admin/hours
+Authorization: Bearer {{loginAdmin.response.body.token}}
+
+###
+
+GET {{baseUrl}}/api/admin/school
+Authorization: Bearer {{loginAdmin.response.body.token}}

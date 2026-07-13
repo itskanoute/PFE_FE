@@ -55,7 +55,7 @@ export function getStoredUser() {
 
 export function getDashboardPath(role) {
   const paths = {
-    admin: '/dashboard/admin',
+    admin: '/admin/dashboard',
     etudiant: '/dashboard/student',
     responsable: '/dashboard/responsable',
   };
@@ -122,4 +122,87 @@ export function getSchools() {
 
 export function getFilieres(schoolId) {
   return apiFetch(`/api/schools/${schoolId}/filieres`);
+}
+
+// ─── Admin ───────────────────────────────────────────────────
+
+export function getAdminDashboard() {
+  return apiFetch('/api/admin/dashboard');
+}
+
+export function getAdminActivity(params = {}) {
+  const searchParams = new URLSearchParams();
+  if (params.search) searchParams.set('search', params.search);
+  if (params.type) searchParams.set('type', params.type);
+  const qs = searchParams.toString();
+  return apiFetch(`/api/admin/activity${qs ? `?${qs}` : ''}`);
+}
+
+export function getAdminResponsables() {
+  return apiFetch('/api/admin/responsables');
+}
+
+export function createAdminResponsable(data) {
+  return apiFetch('/api/admin/responsables', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateAdminResponsable(id, data) {
+  return apiFetch(`/api/admin/responsables/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function toggleAdminResponsableStatus(id) {
+  return apiFetch(`/api/admin/responsables/${id}/status`, { method: 'PATCH' });
+}
+
+export function deleteAdminResponsable(id) {
+  return apiFetch(`/api/admin/responsables/${id}`, { method: 'DELETE' });
+}
+
+export function getAdminStudents(params = {}) {
+  const searchParams = new URLSearchParams();
+  if (params.filiere) searchParams.set('filiere', params.filiere);
+  if (params.ibanMissing) searchParams.set('ibanMissing', 'true');
+  if (params.assistantOnly) searchParams.set('assistantOnly', 'true');
+  const qs = searchParams.toString();
+  return apiFetch(`/api/admin/students${qs ? `?${qs}` : ''}`);
+}
+
+export function getAdminStudent(id) {
+  return apiFetch(`/api/admin/students/${id}`);
+}
+
+export function getAdminHours(params = {}) {
+  const searchParams = new URLSearchParams();
+  if (params.month) searchParams.set('month', params.month);
+  if (params.year) searchParams.set('year', params.year);
+  const qs = searchParams.toString();
+  return apiFetch(`/api/admin/hours${qs ? `?${qs}` : ''}`);
+}
+
+export function getAdminSchoolSettings() {
+  return apiFetch('/api/admin/school');
+}
+
+export function updateAdminSchoolSettings(data) {
+  return apiFetch('/api/admin/school', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function addAdminFiliere(name) {
+  return apiFetch('/api/admin/school/filieres', { method: 'POST', body: JSON.stringify({ name }) });
+}
+
+export function deleteAdminFiliere(id) {
+  return apiFetch(`/api/admin/school/filieres/${id}`, { method: 'DELETE' });
+}
+
+export function getAdminProfile() {
+  return apiFetch('/api/admin/profile');
+}
+
+export function updateAdminProfile(data) {
+  return apiFetch('/api/admin/profile', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function updateAdminPassword(data) {
+  return apiFetch('/api/admin/profile/password', { method: 'PUT', body: JSON.stringify(data) });
 }

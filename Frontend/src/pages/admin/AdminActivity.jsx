@@ -1,33 +1,41 @@
-import { useState } from 'react';
-import { 
-  Activity, UserPlus, CheckCircle2, Megaphone, RefreshCw, 
-  Clock, ShieldAlert, FileText, ChevronLeft, ChevronRight,
-  Filter, Search
+import { useEffect, useState } from 'react';
+import {
+  Activity, UserPlus, CheckCircle2, Megaphone, RefreshCw,
+  Clock, ShieldAlert, FileText, Filter, Search
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getAdminActivity } from '../../services/api';
+
+const typeIcons = {
+  user: UserPlus,
+  check: CheckCircle2,
+  success: CheckCircle2,
+  offer: Megaphone,
+  warning: Megaphone,
+  system: RefreshCw,
+  alert: ShieldAlert,
+  document: FileText,
+};
 
 const AdminActivity = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Expanded mock data
-  const activities = [
-    { id: 1, type: 'user', icon: <UserPlus size={16} />, text: <span><strong>Léa Martin</strong> s'est inscrite en tant qu'étudiante.</span>, time: 'Il y a 2 heures', date: '13/07/2026' },
-    { id: 2, type: 'success', icon: <CheckCircle2 size={16} />, text: <span><strong>M. Ettori</strong> a validé 8h de séances pour Thomas Dubois.</span>, time: 'Il y a 5 heures', date: '13/07/2026' },
-    { id: 3, type: 'warning', icon: <Megaphone size={16} />, text: <span><strong>Mme Durand</strong> a créé une nouvelle offre <span className="badge">Java</span>.</span>, time: 'Hier à 14:20', date: '12/07/2026' },
-    { id: 4, type: 'system', icon: <RefreshCw size={16} />, text: <span><strong>Système :</strong> Export paie de Juin généré avec succès.</span>, time: 'Hier à 09:00', date: '12/07/2026' },
-    { id: 5, type: 'alert', icon: <ShieldAlert size={16} />, text: <span><strong>Alerte :</strong> 3 étudiants n'ont pas encore renseigné leur IBAN.</span>, time: 'Il y a 2 jours', date: '11/07/2026' },
-    { id: 6, type: 'document', icon: <FileText size={16} />, text: <span><strong>Emma Lemaire</strong> a téléversé son contrat de prestation.</span>, time: 'Il y a 2 jours', date: '11/07/2026' },
-    { id: 7, type: 'user', icon: <UserPlus size={16} />, text: <span><strong>Marc Bernard</strong> a été ajouté en tant que Responsable.</span>, time: 'Il y a 3 jours', date: '10/07/2026' },
-    { id: 8, type: 'success', icon: <CheckCircle2 size={16} />, text: <span><strong>Sophie Durand</strong> a validé 12h de séances.</span>, time: 'Il y a 3 jours', date: '10/07/2026' },
-  ];
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoading(true);
+      getAdminActivity({ search: searchTerm, type: filterType })
+        .then((data) => setActivities(data.activities))
+        .catch((err) => setError(err.message))
+        .finally(() => setLoading(false));
+    }, 300);
 
-  const filteredActivities = activities.filter(act => {
-    const matchesSearch = act.text.props.children.join('').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterType === 'all' || act.type === filterType;
-    return matchesSearch && matchesFilter;
-  });
+    return () => clearTimeout(timer);
+  }, [searchTerm, filterType]);
 
   return (
     <>
@@ -47,9 +55,9 @@ const AdminActivity = () => {
         <div style={{ display: 'flex', gap: '1rem', padding: '1.5rem', borderBottom: '1px solid var(--border-color)', background: '#fafafa', flexWrap: 'wrap' }}>
           <div className="search-bar" style={{ flex: 1, minWidth: '300px' }}>
             <Search size={18} />
-            <input 
-              type="text" 
-              placeholder="Rechercher une action, un nom..." 
+            <input
+              type="text"
+              placeholder="Rechercher une action, un nom..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontSize: '0.9rem' }}
@@ -57,8 +65,8 @@ const AdminActivity = () => {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.5rem 1rem' }}>
             <Filter size={16} color="#6b7280" />
-            <select 
-              value={filterType} 
+            <select
+              value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
               style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: '0.85rem', fontWeight: 600, color: 'var(--primary-dark)', cursor: 'pointer' }}
             >
@@ -74,18 +82,22 @@ const AdminActivity = () => {
         </div>
 
         <div style={{ padding: '0 1.5rem' }}>
-          {filteredActivities.length > 0 ? (
-            filteredActivities.map((act, i) => (
-              <div key={act.id} style={{ 
-                display: 'flex', alignItems: 'flex-start', gap: '1.25rem', padding: '1.25rem 0', 
-                borderBottom: i < filteredActivities.length - 1 ? '1px solid var(--border-color)' : 'none'
+          {loading && <p style={{ padding: '2rem', color: '#6b7280' }}>Chargement...</p>}
+          {error && <p style={{ padding: '2rem', color: '#b91c1c' }}>{error}</p>}
+
+          {!loading && !error && activities.length > 0 && activities.map((act, i) => {
+            const Icon = typeIcons[act.type] || Activity;
+            return (
+              <div key={act.id} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '1.25rem', padding: '1.25rem 0',
+                borderBottom: i < activities.length - 1 ? '1px solid var(--border-color)' : 'none'
               }}>
                 <div className={`activity-icon ${act.type}`} style={{ width: '40px', height: '40px', fontSize: '1.2rem' }}>
-                  {act.icon}
+                  <Icon size={16} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.95rem', color: 'var(--primary-dark)', marginBottom: '0.25rem', lineHeight: 1.4 }}>
-                    {act.text}
+                    {act.description}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={12} /> {act.time}</span>
@@ -94,8 +106,10 @@ const AdminActivity = () => {
                   </div>
                 </div>
               </div>
-            ))
-          ) : (
+            );
+          })}
+
+          {!loading && !error && activities.length === 0 && (
             <div style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
               <Activity size={48} style={{ opacity: 0.2, margin: '0 auto 1rem auto' }} />
               <p style={{ fontWeight: 500, fontSize: '1rem', color: 'var(--primary-dark)' }}>Aucune activité trouvée</p>
@@ -104,14 +118,9 @@ const AdminActivity = () => {
           )}
         </div>
 
-        {filteredActivities.length > 0 && (
-          <div className="pagination" style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)', background: '#fafafa', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Affichage de {filteredActivities.length} événements</span>
-            <div className="pagination-controls">
-              <button className="page-btn"><ChevronLeft size={16} /></button>
-              <button className="page-btn active">1</button>
-              <button className="page-btn"><ChevronRight size={16} /></button>
-            </div>
+        {!loading && activities.length > 0 && (
+          <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)', background: '#fafafa', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+            Affichage de {activities.length} événement{activities.length > 1 ? 's' : ''}
           </div>
         )}
       </div>

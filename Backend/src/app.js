@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import healthRoutes from './routes/health.routes.js';
 import schoolsRoutes from './routes/schools.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -42,6 +43,8 @@ app.get('/', (_req, res) => {
       forgotPassword: 'POST /api/auth/forgot-password',
       resetPassword: 'POST /api/auth/reset-password',
       me: 'GET /api/auth/me (Bearer token)',
+      adminDashboard: 'GET /api/admin/dashboard (admin)',
+      adminActivity: 'GET /api/admin/activity (admin)',
       schools: 'GET /api/schools',
       filieres: 'GET /api/schools/:id/filieres',
     },
@@ -50,6 +53,7 @@ app.get('/', (_req, res) => {
 
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/schools', schoolsRoutes);
 
 app.use((_req, res) => {

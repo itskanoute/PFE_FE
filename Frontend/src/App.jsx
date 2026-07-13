@@ -32,7 +32,7 @@ function App() {
         <Route path="/register/student" element={<RegisterStudent />} />
         <Route path="/register/school" element={<RegisterSchool />} />
 
-        <Route path="/dashboard/admin" element={<Dashboard />} />
+        <Route path="/dashboard/admin" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/dashboard/student" element={<Dashboard />} />
         <Route path="/dashboard/responsable" element={<Dashboard />} />
 
