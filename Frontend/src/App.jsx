@@ -21,6 +21,15 @@ import AdminExport from './pages/admin/AdminExport';
 import AdminParametres from './pages/admin/AdminParametres';
 import AdminProfil from './pages/admin/AdminProfil';
 
+// Responsable Pages
+import ResponsableLayout from './pages/responsable/ResponsableLayout';
+import ResponsableDashboard from './pages/responsable/ResponsableDashboard';
+import ResponsableCandidatures from './pages/responsable/ResponsableCandidatures';
+import ResponsableSeances from './pages/responsable/ResponsableSeances';
+import ResponsableHeures from './pages/responsable/ResponsableHeures';
+import ResponsableProfil from './pages/responsable/ResponsableProfil';
+import ResponsableOffres from './pages/responsable/ResponsableOffres';
+
 function App() {
   return (
     <Router>
@@ -48,6 +57,17 @@ function App() {
           <Route path="export" element={<AdminExport />} />
           <Route path="parametres" element={<AdminParametres />} />
           <Route path="profil" element={<AdminProfil />} />
+        </Route>
+
+        {/* Responsable Routes */}
+        <Route path="/responsable" element={<ResponsableLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<ResponsableDashboard />} />
+          <Route path="offres" element={<ResponsableOffres />} />
+          <Route path="candidatures" element={<ResponsableCandidatures />} />
+          <Route path="seances" element={<ResponsableSeances />} />
+          <Route path="heures" element={<ResponsableHeures />} />
+          <Route path="profil" element={<ResponsableProfil />} />
         </Route>
 
         <Route path="/" element={<Navigate to="/login" replace />} />
