@@ -8,6 +8,9 @@ import {
   emailMatchesDomain,
   validatePassword,
   validateStudyYear,
+  buildAuthResponse,
+  formatUserResponse,
+  getRedirectPath,
 } from '../utils/auth.helpers.js';
 
 /**
@@ -25,7 +28,8 @@ import {
  * Réponse succès (200) :
  * {
  *   "token": "eyJhbG...",
- *   "user": { id, email, role, firstName, lastName, schoolId, mustChangePassword }
+ *   "user": { id, email, role, firstName, lastName, schoolId, mustChangePassword },
+ *   "redirectTo": "/responsable/dashboard"
  * }
  */
 export async function login(req, res, next) {
@@ -109,18 +113,7 @@ export async function login(req, res, next) {
 
     // ── 8. Réponse envoyée au frontend ───────────────────────────────
     // On ne renvoie JAMAIS password_hash au client.
-    return res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        schoolId: user.school_id,
-        mustChangePassword: Boolean(user.must_change_password),
-      },
-    });
+    return res.json(buildAuthResponse({ token, user }));
   } catch (error) {
     next(error);
   }
@@ -165,16 +158,10 @@ export async function getMe(req, res, next) {
 
     return res.json({
       message: 'Token valide — vous êtes bien authentifié',
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        schoolId: user.school_id,
+      user: formatUserResponse(user),
+      redirectTo: getRedirectPath(user.role, {
         mustChangePassword: Boolean(user.must_change_password),
-        lastLoginAt: user.last_login_at,
-      },
+      }),
       tokenPayload: req.user,
     });
   } catch (error) {
@@ -279,16 +266,18 @@ export async function registerSchool(req, res, next) {
 
     return res.status(201).json({
       message: 'École et compte administrateur créés avec succès',
-      token,
-      user: {
-        id: result.userId,
-        email: adminEmail,
-        role: 'admin',
-        firstName,
-        lastName,
-        schoolId: result.schoolId,
-        mustChangePassword: false,
-      },
+      ...buildAuthResponse({
+        token,
+        user: {
+          id: result.userId,
+          email: adminEmail,
+          role: 'admin',
+          first_name: firstName,
+          last_name: lastName,
+          school_id: result.schoolId,
+          must_change_password: 0,
+        },
+      }),
       school: {
         id: result.schoolId,
         name: schoolName.trim(),
@@ -406,16 +395,18 @@ export async function registerStudent(req, res, next) {
 
     return res.status(201).json({
       message: 'Compte étudiant créé avec succès',
-      token,
-      user: {
-        id: userId,
-        email: normalizedEmail,
-        role: 'etudiant',
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        schoolId: Number(schoolId),
-        mustChangePassword: false,
-      },
+      ...buildAuthResponse({
+        token,
+        user: {
+          id: userId,
+          email: normalizedEmail,
+          role: 'etudiant',
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          school_id: Number(schoolId),
+          must_change_password: 0,
+        },
+      }),
     });
   } catch (error) {
     next(error);
@@ -555,6 +546,65 @@ export async function resetPassword(req, res, next) {
 
     return res.json({
       message: 'Mot de passe réinitialisé avec succès. Vous pouvez vous connecter.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PUT /api/auth/change-password
+ *
+ * Changement de mot de passe pour un utilisateur connecté.
+ * Utilisé à la première connexion (mustChangePassword) ou depuis le profil.
+ *
+ * Body :
+ * { "password": "...", "confirmPassword": "...", "currentPassword": "..." (optionnel si mustChangePassword) }
+ */
+export async function changePassword(req, res, next) {
+  try {
+    const { password, confirmPassword, currentPassword } = req.body;
+
+    const passwordError = validatePassword(password, confirmPassword);
+    if (passwordError) {
+      return res.status(400).json({ error: passwordError });
+    }
+
+    const users = await query(
+      `SELECT id, role, password_hash, must_change_password, is_active
+       FROM users WHERE id = ? LIMIT 1`,
+      [req.user.id]
+    );
+
+    const user = users[0];
+
+    if (!user || !user.is_active) {
+      return res.status(401).json({ error: 'Utilisateur introuvable ou compte désactivé' });
+    }
+
+    if (!user.must_change_password) {
+      if (!currentPassword?.trim()) {
+        return res.status(400).json({ error: 'Le mot de passe actuel est obligatoire' });
+      }
+
+      const currentMatch = await bcrypt.compare(currentPassword.trim(), user.password_hash);
+      if (!currentMatch) {
+        return res.status(401).json({ error: 'Mot de passe actuel incorrect' });
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    await query(
+      `UPDATE users
+       SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [passwordHash, user.id]
+    );
+
+    return res.json({
+      message: 'Mot de passe modifié avec succès',
+      redirectTo: getRedirectPath(user.role, { mustChangePassword: false }),
     });
   } catch (error) {
     next(error);

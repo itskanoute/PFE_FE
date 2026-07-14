@@ -19,7 +19,7 @@ const Login = () => {
     try {
       const data = await login({ email: email.trim(), password: password.trim() });
       saveAuth(data);
-      navigate(getDashboardPath(data.user.role));
+      navigate(data.redirectTo || getDashboardPath(data.user.role));
     } catch (err) {
       setError(err.message);
     } finally {

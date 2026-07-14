@@ -1,4 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import {
+  getAdminProfile,
+  updateAdminProfile,
+  updateAdminPassword,
+} from '../../services/api';
 import {
   User, Mail, Shield, Bell, Save,
   Camera, Key, Smartphone
@@ -6,13 +11,18 @@ import {
 
 const AdminProfil = () => {
   const [activeTab, setActiveTab] = useState('infos');
-  
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  const [submitSuccess, setSubmitSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
+
   const [formData, setFormData] = useState({
-    prenom: 'Admin',
-    nom: 'ESCP',
-    email: 'admin@escp.eu',
-    role: 'Gestionnaire Principal',
-    telephone: '+33 6 12 34 56 78',
+    prenom: '',
+    nom: '',
+    email: '',
+    role: '',
+    telephone: '',
   });
 
   const [passwordData, setPasswordData] = useState({
@@ -29,6 +39,62 @@ const AdminProfil = () => {
     alertesIban: true
   });
 
+  useEffect(() => {
+    getAdminProfile()
+      .then((data) => setFormData(data.profile))
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSaveProfile = async () => {
+    try {
+      setSaving(true);
+      setSubmitError('');
+      setSubmitSuccess('');
+      await updateAdminProfile({
+        prenom: formData.prenom,
+        nom: formData.nom,
+        telephone: formData.telephone,
+      });
+      setSubmitSuccess('Profil mis à jour');
+    } catch (err) {
+      setSubmitError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSavePassword = async () => {
+    try {
+      setSaving(true);
+      setSubmitError('');
+      setSubmitSuccess('');
+      await updateAdminPassword({
+        currentPassword: passwordData.actuel,
+        newPassword: passwordData.nouveau,
+        confirmPassword: passwordData.confirmation,
+      });
+      setSubmitSuccess('Mot de passe mis à jour');
+      setPasswordData({ actuel: '', nouveau: '', confirmation: '' });
+    } catch (err) {
+      setSubmitError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="content-card" style={{ padding: '2rem' }}>Chargement du profil...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="content-card" style={{ padding: '2rem', color: '#b91c1c' }}>
+        {error}
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="page-header">
@@ -36,13 +102,18 @@ const AdminProfil = () => {
         <p className="page-subtitle">
           Gérez vos informations personnelles, votre sécurité et vos préférences de notification.
         </p>
+        {(submitError || submitSuccess) && (
+          <p style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: submitError ? '#b91c1c' : '#16a34a' }}>
+            {submitError || submitSuccess}
+          </p>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr', gap: '2rem', alignItems: 'start' }}>
         {/* Menu latéral gauche pour le profil */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <button
-            onClick={() => setActiveTab('infos')}
+            onClick={() => { setActiveTab('infos'); setSubmitError(''); setSubmitSuccess(''); }}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px', padding: '1rem',
               background: activeTab === 'infos' ? 'white' : 'transparent',
@@ -56,7 +127,7 @@ const AdminProfil = () => {
             <User size={18} /> Informations personnelles
           </button>
           <button
-            onClick={() => setActiveTab('securite')}
+            onClick={() => { setActiveTab('securite'); setSubmitError(''); setSubmitSuccess(''); }}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px', padding: '1rem',
               background: activeTab === 'securite' ? 'white' : 'transparent',
@@ -70,7 +141,7 @@ const AdminProfil = () => {
             <Shield size={18} /> Sécurité & Mot de passe
           </button>
           <button
-            onClick={() => setActiveTab('notifications')}
+            onClick={() => { setActiveTab('notifications'); setSubmitError(''); setSubmitSuccess(''); }}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px', padding: '1rem',
               background: activeTab === 'notifications' ? 'white' : 'transparent',
@@ -131,7 +202,7 @@ const AdminProfil = () => {
                 <label className="form-label">Email professionnel (Connexion)</label>
                 <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
                   <Mail size={16} style={{ position: 'absolute', left: '12px', color: '#9ca3af' }} />
-                  <input className="form-input" style={{ paddingLeft: '2.5rem' }} value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+                  <input className="form-input" style={{ paddingLeft: '2.5rem', backgroundColor: '#f9fafb' }} value={formData.email} disabled />
                 </div>
               </div>
 
@@ -140,7 +211,7 @@ const AdminProfil = () => {
                   <label className="form-label">Téléphone</label>
                   <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
                     <Smartphone size={16} style={{ position: 'absolute', left: '12px', color: '#9ca3af' }} />
-                    <input className="form-input" style={{ paddingLeft: '2.5rem' }} value={formData.telephone} onChange={(e) => setFormData({...formData, telephone: e.target.value})} />
+                    <input className="form-input" style={{ paddingLeft: '2.5rem' }} value={formData.telephone || ''} onChange={(e) => setFormData({...formData, telephone: e.target.value})} />
                   </div>
                 </div>
                 <div className="form-group">
@@ -150,8 +221,8 @@ const AdminProfil = () => {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
-                <button className="btn-action primary">
-                  <Save size={16} /> Enregistrer les modifications
+                <button className="btn-action primary" onClick={handleSaveProfile} disabled={saving}>
+                  <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
                 </button>
               </div>
             </div>
@@ -190,8 +261,12 @@ const AdminProfil = () => {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
-                <button className="btn-action primary" disabled={!passwordData.actuel || !passwordData.nouveau || passwordData.nouveau !== passwordData.confirmation}>
-                  <Save size={16} /> Mettre à jour le mot de passe
+                <button
+                  className="btn-action primary"
+                  disabled={saving || !passwordData.actuel || !passwordData.nouveau || passwordData.nouveau !== passwordData.confirmation}
+                  onClick={handleSavePassword}
+                >
+                  <Save size={16} /> {saving ? 'Mise à jour...' : 'Mettre à jour le mot de passe'}
                 </button>
               </div>
             </div>

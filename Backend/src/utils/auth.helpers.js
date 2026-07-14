@@ -46,6 +46,21 @@ export function validateStudyYear(year) {
   return VALID_STUDY_YEARS.includes(year);
 }
 
+/** Chemin de redirection frontend selon le rôle après connexion / inscription */
+export function getRedirectPath(role, { mustChangePassword = false } = {}) {
+  if (mustChangePassword) {
+    return '/change-password';
+  }
+
+  const paths = {
+    admin: '/admin/dashboard',
+    responsable: '/responsable/dashboard',
+    etudiant: '/dashboard/student',
+  };
+
+  return paths[role] || '/login';
+}
+
 /** Format standard de réponse utilisateur (sans mot de passe) */
 export function formatUserResponse(user) {
   return {
@@ -56,5 +71,20 @@ export function formatUserResponse(user) {
     lastName: user.last_name,
     schoolId: user.school_id,
     mustChangePassword: Boolean(user.must_change_password),
+  };
+}
+
+/** Réponse auth complète : token + user + redirectTo */
+export function buildAuthResponse({ token, user }) {
+  const formattedUser = user.first_name
+    ? formatUserResponse(user)
+    : user;
+
+  return {
+    token,
+    user: formattedUser,
+    redirectTo: getRedirectPath(formattedUser.role, {
+      mustChangePassword: formattedUser.mustChangePassword,
+    }),
   };
 }

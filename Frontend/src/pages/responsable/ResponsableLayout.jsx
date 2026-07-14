@@ -1,64 +1,58 @@
-import React, { useState } from 'react';
-import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
-import { 
-  Home, 
+import React, { useState, useEffect, useCallback } from 'react';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import {
+  Home,
   Briefcase,
-  FileText, 
-  Calendar, 
-  Clock, 
-  User, 
-  Search, 
-  Bell, 
+  FileText,
+  Calendar,
+  Clock,
+  User,
+  Search,
+  Bell,
   HelpCircle,
   AlertCircle,
   Menu,
   X
 } from 'lucide-react';
+import { getResponsableSummary } from '../../services/api';
 import './responsable.css';
 
 const ResponsableLayout = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Notifications mockées pour la cloche
-  const notifications = [
-    {
-      id: 1,
-      type: 'annulation',
-      title: 'Léa Martin a annulé sa séance',
-      desc: 'BDD - Mar 15/10 - 08h-10h',
-      time: 'Il y a 30 min',
-      unread: true
-    },
-    {
-      id: 2,
-      type: 'annulation',
-      title: 'Paul Durand a annulé sa séance',
-      desc: 'Java - Jeu 17/10 - 10h-12h',
-      time: 'Il y a 2h',
-      unread: true
-    },
-    {
-      id: 3,
-      type: 'candidature',
-      title: 'Marie Lopez a candidaté',
-      desc: 'Offre: Réseaux',
-      time: 'Il y a 5h',
-      unread: true
-    }
-  ];
+  const [badges, setBadges] = useState({ candidatures: 0, heuresLabel: null });
+  const [notifications, setNotifications] = useState([]);
+  const [profile, setProfile] = useState({ name: '...', role: 'Responsable Pédagogique' });
 
-  const unreadCount = notifications.filter(n => n.unread).length;
+  const loadSummary = useCallback(() => {
+    getResponsableSummary()
+      .then((data) => {
+        setBadges(data.badges || { candidatures: 0, heuresLabel: null });
+        setNotifications(data.notifications || []);
+        if (data.profile) setProfile(data.profile);
+      })
+      .catch(() => {
+        setBadges({ candidatures: 0, heuresLabel: null });
+        setNotifications([]);
+      });
+  }, []);
+
+  useEffect(() => {
+    loadSummary();
+  }, [loadSummary, location.pathname]);
+
+  const unreadCount = notifications.filter((n) => n.unread).length;
 
   return (
     <div className="resp-layout">
-      {/* Mobile Header (Visible only on mobile) */}
       <div className="resp-mobile-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div className="resp-logo-title" style={{ margin: 0 }}>EduManage</div>
         </div>
-        <button 
+        <button
           className="resp-mobile-menu-btn"
           onClick={() => setIsMobileMenuOpen(true)}
         >
@@ -66,13 +60,11 @@ const ResponsableLayout = () => {
         </button>
       </div>
 
-      {/* Mobile Overlay */}
-      <div 
+      <div
         className={`resp-mobile-overlay ${isMobileMenuOpen ? 'mobile-open' : ''}`}
         onClick={() => setIsMobileMenuOpen(false)}
-      ></div>
+      />
 
-      {/* Sidebar */}
       <aside className={`resp-sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem 1.5rem 2.5rem 1.5rem' }}>
           <div className="resp-logo" style={{ padding: 0, margin: 0 }}>
@@ -80,7 +72,7 @@ const ResponsableLayout = () => {
             <div className="resp-logo-subtitle">Espace Responsable</div>
           </div>
           {isMobileMenuOpen && (
-            <button 
+            <button
               style={{ background: 'none', border: 'none', color: 'var(--resp-text-light)', cursor: 'pointer' }}
               onClick={() => setIsMobileMenuOpen(false)}
             >
@@ -90,34 +82,38 @@ const ResponsableLayout = () => {
         </div>
 
         <nav className="resp-nav">
-          <NavLink to="/responsable/dashboard" className={({isActive}) => isActive ? "resp-nav-item active" : "resp-nav-item"} onClick={() => setIsMobileMenuOpen(false)}>
+          <NavLink to="/responsable/dashboard" className={({ isActive }) => isActive ? 'resp-nav-item active' : 'resp-nav-item'} onClick={() => setIsMobileMenuOpen(false)}>
             <Home className="resp-nav-icon" />
             <span>Accueil</span>
           </NavLink>
-          
-          <NavLink to="/responsable/offres" className={({isActive}) => isActive ? "resp-nav-item active" : "resp-nav-item"} onClick={() => setIsMobileMenuOpen(false)}>
+
+          <NavLink to="/responsable/offres" className={({ isActive }) => isActive ? 'resp-nav-item active' : 'resp-nav-item'} onClick={() => setIsMobileMenuOpen(false)}>
             <Briefcase className="resp-nav-icon" />
             <span>Offres</span>
           </NavLink>
-          
-          <NavLink to="/responsable/candidatures" className={({isActive}) => isActive ? "resp-nav-item active" : "resp-nav-item"} onClick={() => setIsMobileMenuOpen(false)}>
+
+          <NavLink to="/responsable/candidatures" className={({ isActive }) => isActive ? 'resp-nav-item active' : 'resp-nav-item'} onClick={() => setIsMobileMenuOpen(false)}>
             <FileText className="resp-nav-icon" />
             <span>Candidatures</span>
-            <span className="resp-nav-badge">7</span>
+            {badges.candidatures > 0 && (
+              <span className="resp-nav-badge">{badges.candidatures}</span>
+            )}
           </NavLink>
-          
-          <NavLink to="/responsable/seances" className={({isActive}) => isActive ? "resp-nav-item active" : "resp-nav-item"} onClick={() => setIsMobileMenuOpen(false)}>
+
+          <NavLink to="/responsable/seances" className={({ isActive }) => isActive ? 'resp-nav-item active' : 'resp-nav-item'} onClick={() => setIsMobileMenuOpen(false)}>
             <Calendar className="resp-nav-icon" />
             <span>Séances</span>
           </NavLink>
-          
-          <NavLink to="/responsable/heures" className={({isActive}) => isActive ? "resp-nav-item active" : "resp-nav-item"} onClick={() => setIsMobileMenuOpen(false)}>
+
+          <NavLink to="/responsable/heures" className={({ isActive }) => isActive ? 'resp-nav-item active' : 'resp-nav-item'} onClick={() => setIsMobileMenuOpen(false)}>
             <Clock className="resp-nav-icon" />
             <span>Heures</span>
-            <span className="resp-nav-badge">24h</span>
+            {badges.heuresLabel && (
+              <span className="resp-nav-badge">{badges.heuresLabel}</span>
+            )}
           </NavLink>
-          
-          <NavLink to="/responsable/profil" className={({isActive}) => isActive ? "resp-nav-item active" : "resp-nav-item"} onClick={() => setIsMobileMenuOpen(false)}>
+
+          <NavLink to="/responsable/profil" className={({ isActive }) => isActive ? 'resp-nav-item active' : 'resp-nav-item'} onClick={() => setIsMobileMenuOpen(false)}>
             <User className="resp-nav-icon" />
             <span>Profil</span>
           </NavLink>
@@ -128,9 +124,7 @@ const ResponsableLayout = () => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <div className="resp-main">
-        {/* Header */}
         <header className="resp-header">
           <div className="resp-search">
             <Search className="resp-search-icon" size={18} />
@@ -139,7 +133,7 @@ const ResponsableLayout = () => {
 
           <div className="resp-header-actions">
             <div style={{ position: 'relative' }}>
-              <button 
+              <button
                 className="resp-header-icon-btn"
                 onClick={() => setShowNotifications(!showNotifications)}
               >
@@ -149,7 +143,6 @@ const ResponsableLayout = () => {
                 )}
               </button>
 
-              {/* Notifications Dropdown */}
               {showNotifications && (
                 <div style={{
                   position: 'absolute',
@@ -166,22 +159,36 @@ const ResponsableLayout = () => {
                 }}>
                   <div style={{ padding: '1rem', borderBottom: '1px solid var(--resp-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--resp-text)', fontWeight: 600 }}>Notifications</h3>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--resp-text-light)', cursor: 'pointer' }}>Tout lire</span>
+                    <span
+                      style={{ fontSize: '0.8rem', color: 'var(--resp-text-light)', cursor: 'pointer' }}
+                      onClick={() => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))}
+                    >
+                      Tout lire
+                    </span>
                   </div>
                   <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
-                    {notifications.map(notif => (
-                      <div 
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--resp-text-light)', fontSize: '0.85rem' }}>
+                        Aucune notification
+                      </div>
+                    ) : notifications.map((notif) => (
+                      <div
                         key={notif.id}
-                        style={{ 
-                          padding: '1rem', 
-                          borderBottom: '1px solid var(--resp-border)', 
-                          cursor: 'pointer', 
-                          display: 'flex', 
+                        style={{
+                          padding: '1rem',
+                          borderBottom: '1px solid var(--resp-border)',
+                          cursor: 'pointer',
+                          display: 'flex',
                           gap: '12px',
                           backgroundColor: notif.unread ? '#fefce8' : 'white'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = notif.unread ? '#fefce8' : 'white'}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = notif.unread ? '#fefce8' : 'white'; }}
+                        onClick={() => {
+                          if (notif.type === 'candidature') navigate('/responsable/candidatures');
+                          else navigate('/responsable/seances');
+                          setShowNotifications(false);
+                        }}
                       >
                         <div style={{ color: notif.type === 'annulation' ? 'var(--resp-danger)' : 'var(--resp-success)', marginTop: '2px' }}>
                           <AlertCircle size={16} />
@@ -194,9 +201,9 @@ const ResponsableLayout = () => {
                       </div>
                     ))}
                   </div>
-                  <div 
+                  <div
                     style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--resp-primary)', cursor: 'pointer', fontWeight: 500, backgroundColor: '#f8fafc' }}
-                    onClick={() => navigate('/responsable/seances')}
+                    onClick={() => { navigate('/responsable/seances'); setShowNotifications(false); }}
                   >
                     Voir toutes les notifications
                   </div>
@@ -204,17 +211,22 @@ const ResponsableLayout = () => {
               )}
             </div>
 
-            <button className="resp-header-icon-btn">
+            <a
+              href="mailto:support@edumanage.fr?subject=Aide%20EduManage%20-%20Responsable"
+              className="resp-header-icon-btn"
+              title="Contacter le support"
+              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
               <HelpCircle size={20} />
-            </button>
-            
-            <div 
+            </a>
+
+            <div
               className="resp-user-profile"
               onClick={() => navigate('/responsable/profil')}
             >
               <div className="resp-user-info">
-                <div className="resp-user-name">M. Ettori</div>
-                <div className="resp-user-role">Responsable Pédagogique</div>
+                <div className="resp-user-name">{profile.name}</div>
+                <div className="resp-user-role">{profile.role}</div>
               </div>
               <img
                 src="https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&q=80"
@@ -225,9 +237,8 @@ const ResponsableLayout = () => {
           </div>
         </header>
 
-        {/* Page Content */}
         <main className="resp-page">
-          <Outlet />
+          <Outlet context={{ refreshSummary: loadSummary }} />
         </main>
       </div>
     </div>

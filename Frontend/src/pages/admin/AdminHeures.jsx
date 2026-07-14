@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AnimatedCounter from '../../components/AnimatedCounter';
+import { getAdminHours } from '../../services/api';
 import {
   Clock, CheckCircle2, Hourglass, XCircle,
   Calendar, Filter, Mail, Eye, ExternalLink, Search, X
@@ -8,20 +9,34 @@ import {
 
 const AdminHeures = () => {
   const navigate = useNavigate();
-  const [mois, setMois] = useState('Octobre 2026');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [stats, setStats] = useState({ total: 0, validees: 0, attente: 0, refusees: 0 });
+  const [tauxValidation, setTauxValidation] = useState(0);
+  const [parResponsable, setParResponsable] = useState([]);
+  const [parAssistant, setParAssistant] = useState([]);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedResponsable, setSelectedResponsable] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
 
-  const stats = {
-    total: 156, validees: 120, attente: 28, refusees: 8,
-  };
-  const tauxValidation = Math.round((stats.validees / stats.total) * 100);
+  const loadData = useCallback(async () => {
+    try {
+      setError('');
+      const data = await getAdminHours();
+      setStats(data.stats);
+      setTauxValidation(data.tauxValidation);
+      setParResponsable(data.byResponsable);
+      setParAssistant(data.byAssistant);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const parResponsable = [
-    { id: 1, initials: 'ME', color: '#2563eb', nom: 'M. Ettori', email: 'e.ettori@university.fr', assistants: 5, heuresOK: 48, attente: 0, refusees: 4 },
-    { id: 2, initials: 'MD', color: '#d97706', nom: 'Mme Durand', email: 'm.durand@university.fr', assistants: 3, heuresOK: 36, attente: 24, refusees: 0 },
-  ];
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const filteredResponsables = parResponsable.filter(r => {
     if (filterStatus === 'attente') return r.attente > 0;
@@ -29,10 +44,17 @@ const AdminHeures = () => {
     return true;
   });
 
-  const parAssistant = [
-    { id: 1, nom: 'Léa Martin', responsable: 'M. Ettori', heuresOK: 26, attente: 0, ibanOk: true },
-    { id: 2, nom: 'Marie Lopez', responsable: 'Mme Durand', heuresOK: 12, attente: 12, ibanOk: false },
-  ];
+  if (loading) {
+    return <div className="content-card" style={{ padding: '2rem' }}>Chargement des heures...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="content-card" style={{ padding: '2rem', color: '#b91c1c' }}>
+        {error}
+      </div>
+    );
+  }
 
   return (
     <>

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { getAdminStudent } from '../../services/api';
 import { 
   ArrowLeft, Mail, Phone, MapPin, Calendar, 
   CreditCard, ShieldCheck, Download, CheckCircle2, 
@@ -9,31 +10,35 @@ import {
 const AdminEtudiantDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  
-  // Simulation des données de l'étudiant
-  const etudiant = {
-    id: id,
-    nom: 'Martin',
-    prenom: 'Léa',
-    email: 'lea.martin@university.fr',
-    telephone: '+33 6 12 34 56 78',
-    adresse: '15 rue des Étudiants, 75011 Paris',
-    dateNaissance: '12 Mai 2002',
-    identifiant: '#2023 - 4412',
-    filiere: 'L3 Informatique',
-    statut: 'assistant',
-    ibanOk: true,
-    initials: 'LM',
-    color: '#7c3aed',
-    dateInscription: '15 Septembre 2023',
-    iban: 'FR76 1234 5678 9012 3456 7890 123'
-  };
 
-  const historiqueHeures = [
-    { mois: 'Octobre 2026', total: 12, valide: 12, statut: 'Payé' },
-    { mois: 'Septembre 2026', total: 18, valide: 18, statut: 'Payé' },
-    { mois: 'Mai 2026', total: 8, valide: 8, statut: 'Payé' },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [etudiant, setEtudiant] = useState(null);
+  const [historiqueHeures, setHistoriqueHeures] = useState([]);
+
+  useEffect(() => {
+    getAdminStudent(id)
+      .then((data) => {
+        setEtudiant({ ...data.student, color: '#7c3aed' });
+        setHistoriqueHeures(data.hourHistory);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return <div className="content-card" style={{ padding: '2rem' }}>Chargement de l'étudiant...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="content-card" style={{ padding: '2rem', color: '#b91c1c' }}>
+        {error}
+      </div>
+    );
+  }
+
+  const totalAnnuel = historiqueHeures.reduce((sum, h) => sum + h.valide, 0);
 
   return (
     <>
@@ -100,19 +105,19 @@ const AdminEtudiantDetail = () => {
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Téléphone</div>
                 <div style={{ fontSize: '0.9rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Phone size={14} style={{ color: '#9ca3af' }} /> {etudiant.telephone}
+                  <Phone size={14} style={{ color: '#9ca3af' }} /> {etudiant.telephone || '—'}
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Date de naissance</div>
                 <div style={{ fontSize: '0.9rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Calendar size={14} style={{ color: '#9ca3af' }} /> {etudiant.dateNaissance}
+                  <Calendar size={14} style={{ color: '#9ca3af' }} /> —
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Adresse postale</div>
                 <div style={{ fontSize: '0.9rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <MapPin size={14} style={{ color: '#9ca3af' }} /> {etudiant.adresse}
+                  <MapPin size={14} style={{ color: '#9ca3af' }} /> —
                 </div>
               </div>
             </div>
@@ -126,7 +131,7 @@ const AdminEtudiantDetail = () => {
                   <Clock size={18} /> Historique des heures validées
                 </h2>
                 <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  Total annuel : <span style={{ color: 'var(--primary-dark)' }}>38 heures</span>
+                  Total annuel : <span style={{ color: 'var(--primary-dark)' }}>{totalAnnuel} heures</span>
                 </div>
               </div>
               
@@ -147,7 +152,7 @@ const AdminEtudiantDetail = () => {
                         <td>{h.total}h</td>
                         <td>{h.valide}h</td>
                         <td>
-                          <span className="badge success">{h.statut}</span>
+                          <span className={`badge ${h.statut === 'Payé' ? 'success' : 'neutral'}`}>{h.statut}</span>
                         </td>
                       </tr>
                     ))}
@@ -187,7 +192,7 @@ const AdminEtudiantDetail = () => {
                 <div style={{ fontSize: '0.75rem', color: etudiant.ibanOk ? '#16a34a' : '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   {etudiant.ibanOk ? <><CheckCircle2 size={12} /> Validé et vérifié</> : <><XCircle size={12} /> Document manquant</>}
                 </div>
-                {etudiant.ibanOk && (
+                {etudiant.ibanOk && etudiant.iban && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-color)', marginTop: '0.5rem', fontFamily: 'monospace', background: '#f9fafb', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)', display: 'inline-block' }}>
                     {etudiant.iban.replace(/(.{4})/g, '$1 ').trim()}
                   </div>

@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import AnimatedCounter from '../../components/AnimatedCounter';
+import { getAdminStudents } from '../../services/api';
 import {
   Users, ShieldCheck, CreditCard, AlertTriangle,
   Filter, ChevronDown, MoreVertical, Mail,
@@ -10,6 +11,19 @@ import {
 
 const AdminEtudiants = () => {
   const navigate = useNavigate();
+  const { searchTerm = '' } = useOutletContext() ?? {};
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [stats, setStats] = useState({
+    totalInscrits: 0,
+    assistantsActifs: 0,
+    ibanValides: 0,
+    ibanManquants: 0,
+  });
+  const [etudiants, setEtudiants] = useState([]);
+  const [filieres, setFilieres] = useState([]);
+
   const [filterFiliere, setFilterFiliere] = useState('');
   const [filterIban, setFilterIban] = useState(false);
   const [filterAssistant, setFilterAssistant] = useState(false);
@@ -34,6 +48,29 @@ const AdminEtudiants = () => {
     nom: '', prenom: '', email: '', filiere: '', identifiant: ''
   });
 
+  const loadData = useCallback(async () => {
+    try {
+      setError('');
+      const data = await getAdminStudents({
+        filiere: filterFiliere || undefined,
+        ibanMissing: filterIban || undefined,
+        assistantOnly: filterAssistant || undefined,
+      });
+      setStats(data.stats);
+      setEtudiants(data.students);
+      setFilieres(data.filieres || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [filterFiliere, filterIban, filterAssistant]);
+
+  useEffect(() => {
+    setLoading(true);
+    loadData();
+  }, [loadData]);
+
   const handleCreate = (e) => {
     e.preventDefault();
     setCreatedEtudiant({ ...formData, password: generatedPassword });
@@ -42,26 +79,28 @@ const AdminEtudiants = () => {
     setFormData({ nom: '', prenom: '', email: '', filiere: '', identifiant: '' });
   };
 
-  const stats = {
-    totalInscrits: 23,
-    assistantsActifs: 12,
-    ibanValides: 20,
-    ibanManquants: 3,
-  };
+  const filteredEtudiants = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return etudiants;
+    return etudiants.filter((e) =>
+      e.nom.toLowerCase().includes(q) ||
+      e.email?.toLowerCase().includes(q) ||
+      e.identifiant?.toLowerCase().includes(q) ||
+      e.filiere?.toLowerCase().includes(q)
+    );
+  }, [etudiants, searchTerm]);
 
-  const etudiants = [
-    { id: 1, initials: 'LM', color: '#7c3aed', nom: 'Léa Martin', email: 'lea.martin@university.fr', identifiant: '#2023 - 4412', filiere: 'L3 Informatique', ibanOk: true, statut: 'assistant' },
-    { id: 2, initials: 'ML', color: '#d97706', nom: 'Marie Lopez', email: 'm.lopez@university.fr', identifiant: '#2023 - 8891', filiere: 'L3 Informatique', ibanOk: false, statut: 'assistant' },
-    { id: 3, initials: 'KH', color: '#2563eb', nom: 'Karim Hadj', email: 'k.hadj@university.fr', identifiant: '#2022 - 1055', filiere: 'L2 Informatique', ibanOk: false, statut: 'inscrit' },
-    { id: 4, initials: 'SN', color: '#16a34a', nom: 'Sophie Nguyen', email: 's.nguyen@university.fr', identifiant: '#2023 - 0192', filiere: 'M1 Management', ibanOk: true, statut: 'inscrit' },
-  ];
+  if (loading) {
+    return <div className="content-card" style={{ padding: '2rem' }}>Chargement des étudiants...</div>;
+  }
 
-  const filteredEtudiants = etudiants.filter((e) => {
-    if (filterIban && e.ibanOk) return false;
-    if (filterAssistant && e.statut !== 'assistant') return false;
-    if (filterFiliere && e.filiere !== filterFiliere) return false;
-    return true;
-  });
+  if (error) {
+    return (
+      <div className="content-card" style={{ padding: '2rem', color: '#b91c1c' }}>
+        {error}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -95,9 +134,9 @@ const AdminEtudiants = () => {
             onChange={(e) => setFilterFiliere(e.target.value)}
           >
             <option value="">Toutes les filières</option>
-            <option value="L2 Informatique">L2 Informatique</option>
-            <option value="L3 Informatique">L3 Informatique</option>
-            <option value="M1 Management">M1 Management</option>
+            {filieres.map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
           </select>
           <ChevronDown size={14} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#6b7280' }} />
         </div>
@@ -133,7 +172,13 @@ const AdminEtudiants = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredEtudiants.map((e) => (
+            {filteredEtudiants.length === 0 ? (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                  {searchTerm.trim() ? 'Aucun étudiant ne correspond à votre recherche.' : 'Aucun étudiant inscrit.'}
+                </td>
+              </tr>
+            ) : filteredEtudiants.map((e) => (
               <tr key={e.id}>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

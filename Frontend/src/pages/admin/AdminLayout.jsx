@@ -180,9 +180,14 @@ const AdminLayout = () => {
               </div>
             )}
 
-            <button className="header-icon-btn">
+            <a
+              href="mailto:support@edumanage.fr?subject=Aide%20EduManage%20-%20Admin"
+              className="header-icon-btn"
+              title="Contacter le support"
+              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
               <HelpCircle size={18} />
-            </button>
+            </a>
             <div 
               className="admin-user-info" 
               onClick={() => navigate('/admin/profil')}

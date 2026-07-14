@@ -57,7 +57,7 @@ export function getDashboardPath(role) {
   const paths = {
     admin: '/admin/dashboard',
     etudiant: '/dashboard/student',
-    responsable: '/dashboard/responsable',
+    responsable: '/responsable/dashboard',
   };
   return paths[role] || '/login';
 }
@@ -110,6 +110,13 @@ export function forgotPassword(data) {
 export function resetPassword(data) {
   return apiFetch('/api/auth/reset-password', {
     method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function changePassword(data) {
+  return apiFetch('/api/auth/change-password', {
+    method: 'PUT',
     body: JSON.stringify(data),
   });
 }
@@ -205,4 +212,71 @@ export function updateAdminProfile(data) {
 
 export function updateAdminPassword(data) {
   return apiFetch('/api/admin/profile/password', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+// ─── Responsable ─────────────────────────────────────────────
+
+export function getResponsableDashboard() {
+  return apiFetch('/api/responsable/dashboard');
+}
+
+export function getResponsableSummary() {
+  return apiFetch('/api/responsable/summary');
+}
+
+export function getResponsableOffers() {
+  return apiFetch('/api/responsable/offers');
+}
+
+export function createResponsableOffer(data) {
+  return apiFetch('/api/responsable/offers', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateResponsableOffer(id, data) {
+  return apiFetch(`/api/responsable/offers/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function toggleResponsableOfferStatus(id) {
+  return apiFetch(`/api/responsable/offers/${id}/status`, { method: 'PATCH' });
+}
+
+export function getResponsableApplications(params = {}) {
+  const qs = params.status ? `?status=${params.status}` : '';
+  return apiFetch(`/api/responsable/applications${qs}`);
+}
+
+export function reviewResponsableApplication(id, action) {
+  return apiFetch(`/api/responsable/applications/${id}`, { method: 'PATCH', body: JSON.stringify({ action }) });
+}
+
+export function getResponsableSessions() {
+  return apiFetch('/api/responsable/sessions');
+}
+
+export function createResponsableSession(data) {
+  return apiFetch('/api/responsable/sessions', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function assignResponsableSession(id, studentId) {
+  return apiFetch(`/api/responsable/sessions/${id}/assign`, { method: 'PATCH', body: JSON.stringify({ studentId }) });
+}
+
+export function getResponsableHours() {
+  return apiFetch('/api/responsable/hours');
+}
+
+export function reviewResponsableHour(id, action) {
+  return apiFetch(`/api/responsable/hours/${id}`, { method: 'PATCH', body: JSON.stringify({ action }) });
+}
+
+export function getResponsableProfile() {
+  return apiFetch('/api/responsable/profile');
+}
+
+export function updateResponsableProfile(data) {
+  return apiFetch('/api/responsable/profile', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function updateResponsablePassword(data) {
+  return apiFetch('/api/responsable/profile/password', { method: 'PUT', body: JSON.stringify(data) });
 }

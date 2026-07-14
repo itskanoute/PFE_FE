@@ -4,6 +4,7 @@ import './App.css';
 import Login from './pages/auth/Login';
 import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
+import ChangePassword from './pages/auth/ChangePassword';
 import RegisterChoice from './pages/auth/RegisterChoice';
 import RegisterStudent from './pages/auth/RegisterStudent';
 import RegisterSchool from './pages/auth/RegisterSchool';
@@ -37,13 +38,14 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/change-password" element={<ChangePassword />} />
         <Route path="/register" element={<RegisterChoice />} />
         <Route path="/register/student" element={<RegisterStudent />} />
         <Route path="/register/school" element={<RegisterSchool />} />
 
         <Route path="/dashboard/admin" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="/dashboard/responsable" element={<Navigate to="/responsable/dashboard" replace />} />
         <Route path="/dashboard/student" element={<Dashboard />} />
-        <Route path="/dashboard/responsable" element={<Dashboard />} />
 
         {/* Admin Routes */}
         <Route path="/admin" element={<AdminLayout />}>

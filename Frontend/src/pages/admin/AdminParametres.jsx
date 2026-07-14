@@ -1,36 +1,106 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  getAdminSchoolSettings,
+  updateAdminSchoolSettings,
+  addAdminFiliere,
+  deleteAdminFiliere,
+} from '../../services/api';
 import {
   Save, Pencil, Trash2, Plus, Info
 } from 'lucide-react';
 
 const AdminParametres = () => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
-    nomEcole: 'ESCP Business School',
-    acronyme: 'ESCP',
-    domaineEmail: '@escp.eu',
-    adresse: '79 Avenue de la République',
-    ville: 'Paris',
-    telephone: '+33 1 49 23 20 00',
-    tauxHoraire: '12.00',
+    nomEcole: '',
+    acronyme: '',
+    domaineEmail: '',
+    adresse: '',
+    ville: '',
+    telephone: '',
+    tauxHoraire: '',
+    logoUrl: '',
   });
 
-  const [filieres, setFilieres] = useState([
-    'Master in Management (MiM)',
-    'MBA in International Management',
-    'Executive MBA (EMBA)',
-  ]);
+  const [filieres, setFilieres] = useState([]);
   const [newFiliere, setNewFiliere] = useState('');
 
-  const handleAddFiliere = () => {
-    if (newFiliere.trim()) {
-      setFilieres([...filieres, newFiliere.trim()]);
-      setNewFiliere('');
+  const loadData = useCallback(async () => {
+    try {
+      setError('');
+      const data = await getAdminSchoolSettings();
+      setFormData(data.school);
+      setFilieres(data.filieres);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      setSaveError('');
+      setSaveSuccess('');
+      await updateAdminSchoolSettings({
+        nomEcole: formData.nomEcole,
+        adresse: formData.adresse,
+        ville: formData.ville,
+        telephone: formData.telephone,
+        tauxHoraire: formData.tauxHoraire,
+      });
+      setSaveSuccess('Paramètres enregistrés');
+    } catch (err) {
+      setSaveError(err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleRemoveFiliere = (index) => {
-    setFilieres(filieres.filter((_, i) => i !== index));
+  const handleAddFiliere = async () => {
+    const name = newFiliere.trim();
+    if (!name) return;
+
+    try {
+      setSaveError('');
+      const data = await addAdminFiliere(name);
+      setFilieres([...filieres, data.filiere]);
+      setNewFiliere('');
+    } catch (err) {
+      setSaveError(err.message);
+    }
   };
+
+  const handleRemoveFiliere = async (id) => {
+    try {
+      setSaveError('');
+      await deleteAdminFiliere(id);
+      setFilieres(filieres.filter((f) => f.id !== id));
+    } catch (err) {
+      setSaveError(err.message);
+    }
+  };
+
+  if (loading) {
+    return <div className="content-card" style={{ padding: '2rem' }}>Chargement des paramètres...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="content-card" style={{ padding: '2rem', color: '#b91c1c' }}>
+        {error}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -44,10 +114,20 @@ const AdminParametres = () => {
               filières de formation de l'établissement {formData.nomEcole}.
             </p>
           </div>
-          <button className="btn-action primary" style={{ padding: '0.875rem 1.5rem', fontSize: '0.9rem' }}>
-            <Save size={18} /> Enregistrer les modifications
+          <button
+            className="btn-action primary"
+            style={{ padding: '0.875rem 1.5rem', fontSize: '0.9rem' }}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            <Save size={18} /> {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
           </button>
         </div>
+        {(saveError || saveSuccess) && (
+          <p style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: saveError ? '#b91c1c' : '#16a34a' }}>
+            {saveError || saveSuccess}
+          </p>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '1.5rem', alignItems: 'start' }}>
@@ -67,11 +147,11 @@ const AdminParametres = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div className="form-group">
                 <label className="form-label">Acronyme</label>
-                <input className="form-input" value={formData.acronyme} onChange={(e) => setFormData({ ...formData, acronyme: e.target.value })} />
+                <input className="form-input" value={formData.acronyme} disabled style={{ backgroundColor: '#f9fafb' }} />
               </div>
               <div className="form-group">
                 <label className="form-label">Domaine Email autorisé</label>
-                <input className="form-input" value={formData.domaineEmail} onChange={(e) => setFormData({ ...formData, domaineEmail: e.target.value })} />
+                <input className="form-input" value={formData.domaineEmail} disabled style={{ backgroundColor: '#f9fafb' }} />
               </div>
             </div>
 
@@ -130,7 +210,7 @@ const AdminParametres = () => {
                 background: '#f8fafc', overflow: 'hidden'
               }}>
                 <img
-                  src="https://images.unsplash.com/photo-1562774053-701939374585?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80"
+                  src={formData.logoUrl || 'https://images.unsplash.com/photo-1562774053-701939374585?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80'}
                   alt="Logo école"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
@@ -153,14 +233,14 @@ const AdminParametres = () => {
             </h2>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-              {filieres.map((f, i) => (
-                <div key={i} style={{
+              {filieres.map((f) => (
+                <div key={f.id} style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '0.75rem 1rem', border: '1px solid var(--border-color)',
                   borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontWeight: 500
                 }}>
-                  {f}
-                  <button onClick={() => handleRemoveFiliere(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626' }}>
+                  {f.name}
+                  <button onClick={() => handleRemoveFiliere(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626' }}>
                     <Trash2 size={14} />
                   </button>
                 </div>

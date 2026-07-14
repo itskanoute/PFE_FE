@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { login, getMe, registerSchool, registerStudent, forgotPassword, resetPassword } from '../controllers/auth.controller.js';
+import { login, getMe, registerSchool, registerStudent, forgotPassword, resetPassword, changePassword } from '../controllers/auth.controller.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { uploadLogo, handleUploadError } from '../middleware/upload.middleware.js';
 
@@ -28,6 +28,8 @@ router.post('/register/student', registerStudent);
 
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+
+router.put('/change-password', authenticateToken, changePassword);
 
 // Profil connecté — route protégée pour tester le token JWT
 router.get('/me', authenticateToken, getMe);

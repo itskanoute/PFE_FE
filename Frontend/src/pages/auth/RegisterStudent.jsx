@@ -50,7 +50,7 @@ const RegisterStudent = () => {
       const data = await registerStudent(formData);
       saveAuth(data);
       setSuccess(data.message);
-      setTimeout(() => navigate(getDashboardPath(data.user.role)), 1500);
+      setTimeout(() => navigate(data.redirectTo || getDashboardPath(data.user.role)), 1500);
     } catch (err) {
       setError(err.message);
     } finally {

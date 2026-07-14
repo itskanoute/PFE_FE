@@ -67,7 +67,7 @@ const RegisterSchool = () => {
       const data = await registerSchool(formData, logoFile);
       saveAuth(data);
       setSuccess(data.message);
-      setTimeout(() => navigate(getDashboardPath(data.user.role)), 1500);
+      setTimeout(() => navigate(data.redirectTo || getDashboardPath(data.user.role)), 1500);
     } catch (err) {
       setError(err.message);
       alertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });

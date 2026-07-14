@@ -6,6 +6,7 @@ import healthRoutes from './routes/health.routes.js';
 import schoolsRoutes from './routes/schools.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import responsableRoutes from './routes/responsable.routes.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -54,6 +55,7 @@ app.get('/', (_req, res) => {
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/responsable', responsableRoutes);
 app.use('/api/schools', schoolsRoutes);
 
 app.use((_req, res) => {

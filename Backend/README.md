@@ -139,7 +139,7 @@ Invoke-RestMethod -Method POST -Uri http://localhost:3000/api/auth/login `
 | Méthode | Route | Description |
 |---------|-------|-------------|
 | GET | `/api/health` | Santé de l'API + connexion MySQL |
-| POST | `/api/auth/login` | Connexion (email + mot de passe → JWT) |
+| POST | `/api/auth/login` | Connexion (email + mot de passe → JWT + `redirectTo`) |
 | POST | `/api/auth/register/school` | Inscription école + admin |
 | POST | `/api/auth/register/student` | Inscription étudiant |
 | GET | `/api/auth/me` | Profil connecté (Bearer token) |
@@ -200,7 +200,7 @@ cd Frontend && npm install && npm run dev
 ```
 
 **Flux testés :**
-- `/login` → POST `/api/auth/login` → redirection dashboard
+- `/login` → POST `/api/auth/login` → redirection via `redirectTo` (admin, responsable, étudiant)
 - `/register/school` → POST `/api/auth/register/school`
 - `/register/student` → GET `/api/schools` + POST `/api/auth/register/student`
 - Validation des heures et export mensuel
