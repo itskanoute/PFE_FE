@@ -31,6 +31,16 @@ import ResponsableHeures from './pages/responsable/ResponsableHeures';
 import ResponsableProfil from './pages/responsable/ResponsableProfil';
 import ResponsableOffres from './pages/responsable/ResponsableOffres';
 
+// Etudiant Pages
+import EtudiantLayout from './pages/etudiant/EtudiantLayout';
+import EtudiantDashboard from './pages/etudiant/EtudiantDashboard';
+import EtudiantCandidatures from './pages/etudiant/EtudiantCandidatures';
+import EtudiantSeances from './pages/etudiant/EtudiantSeances';
+import EtudiantToutesSeances from './pages/etudiant/EtudiantToutesSeances';
+import EtudiantHeures from './pages/etudiant/EtudiantHeures';
+import EtudiantProfil from './pages/etudiant/EtudiantProfil';
+import EtudiantOffres from './pages/etudiant/EtudiantOffres';
+
 function App() {
   return (
     <Router>
@@ -45,7 +55,7 @@ function App() {
 
         <Route path="/dashboard/admin" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/dashboard/responsable" element={<Navigate to="/responsable/dashboard" replace />} />
-        <Route path="/dashboard/student" element={<Dashboard />} />
+        <Route path="/dashboard/student" element={<Navigate to="/etudiant/dashboard" replace />} />
 
         {/* Admin Routes */}
         <Route path="/admin" element={<AdminLayout />}>
@@ -70,6 +80,18 @@ function App() {
           <Route path="seances" element={<ResponsableSeances />} />
           <Route path="heures" element={<ResponsableHeures />} />
           <Route path="profil" element={<ResponsableProfil />} />
+        </Route>
+
+        {/* Etudiant Routes */}
+        <Route path="/etudiant" element={<EtudiantLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<EtudiantDashboard />} />
+          <Route path="offres" element={<EtudiantOffres />} />
+          <Route path="candidatures" element={<EtudiantCandidatures />} />
+          <Route path="seances" element={<EtudiantSeances />} />
+          <Route path="seances/toutes" element={<EtudiantToutesSeances />} />
+          <Route path="heures" element={<EtudiantHeures />} />
+          <Route path="profil" element={<EtudiantProfil />} />
         </Route>
 
         <Route path="/" element={<Navigate to="/login" replace />} />
