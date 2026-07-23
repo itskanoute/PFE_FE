@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import AnimatedCounter from '../../components/AnimatedCounter';
 import { getAdminHours } from '../../services/api';
 import {
@@ -9,6 +9,7 @@ import {
 
 const AdminHeures = () => {
   const navigate = useNavigate();
+  const { searchTerm = '' } = useOutletContext() ?? {};
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [stats, setStats] = useState({ total: 0, validees: 0, attente: 0, refusees: 0 });
@@ -18,6 +19,7 @@ const AdminHeures = () => {
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedResponsable, setSelectedResponsable] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [assistantSearch, setAssistantSearch] = useState('');
 
   const loadData = useCallback(async () => {
     try {
@@ -38,11 +40,26 @@ const AdminHeures = () => {
     loadData();
   }, [loadData]);
 
-  const filteredResponsables = parResponsable.filter(r => {
-    if (filterStatus === 'attente') return r.attente > 0;
-    if (filterStatus === 'ok') return r.attente === 0;
-    return true;
+  const query = (searchTerm || assistantSearch).trim().toLowerCase();
+
+  const filteredResponsables = parResponsable.filter((r) => {
+    if (filterStatus === 'attente' && !(r.attente > 0)) return false;
+    if (filterStatus === 'ok' && !(r.attente === 0)) return false;
+    if (!query) return true;
+    return (
+      (r.nom || '').toLowerCase().includes(query) ||
+      (r.email || '').toLowerCase().includes(query) ||
+      (r.departement || '').toLowerCase().includes(query)
+    );
   });
+
+  const filteredAssistants = useMemo(() => {
+    if (!query) return parAssistant;
+    return parAssistant.filter((a) =>
+      (a.nom || '').toLowerCase().includes(query) ||
+      (a.responsable || '').toLowerCase().includes(query)
+    );
+  }, [parAssistant, query]);
 
   if (loading) {
     return <div className="content-card" style={{ padding: '2rem' }}>Chargement des heures...</div>;
@@ -179,7 +196,12 @@ const AdminHeures = () => {
           <h2 className="content-card-title">Par assistant</h2>
           <div className="admin-search" style={{ minWidth: '200px' }}>
             <Search size={14} color="#9ca3af" />
-            <input type="text" placeholder="Rechercher un assistant..." />
+            <input
+              type="text"
+              placeholder="Rechercher un assistant..."
+              value={assistantSearch}
+              onChange={(e) => setAssistantSearch(e.target.value)}
+            />
           </div>
         </div>
 
@@ -196,7 +218,13 @@ const AdminHeures = () => {
               </tr>
             </thead>
             <tbody>
-              {parAssistant.map((a) => (
+              {filteredAssistants.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    {query ? 'Aucun assistant ne correspond à la recherche.' : 'Aucun assistant.'}
+                  </td>
+                </tr>
+              ) : filteredAssistants.map((a) => (
                 <tr key={a.id}>
                   <td style={{ fontWeight: 600 }}>{a.nom}</td>
                   <td>{a.responsable}</td>

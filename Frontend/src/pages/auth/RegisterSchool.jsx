@@ -25,7 +25,11 @@ const RegisterSchool = () => {
   const alertRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const expectedDomain = formData.emailDomain.trim().replace(/^@+/, '').toLowerCase();
+  const expectedDomain = (() => {
+    let value = formData.emailDomain.trim().replace(/^@+/, '').toLowerCase();
+    if (value.includes('@')) value = value.split('@').pop();
+    return value;
+  })();
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.id]: e.target.value });
@@ -145,7 +149,7 @@ const RegisterSchool = () => {
                     <input id="emailDomain" type="text" className="form-input has-icon-left" placeholder="escp.eu" value={formData.emailDomain} onChange={handleChange} required />
                   </div>
                   <div className="helper-text" style={{ marginTop: '0.5rem', color: '#4b5563' }}>
-                    Ceci permettra de valider automatiquement les inscriptions de vos étudiants.
+                    Ex. <strong>escp.eu</strong> pour l’école. Les emails @{expectedDomain || 'escp.eu'} <strong>et</strong> @gmail.com sont acceptés (pratique pour tester).
                   </div>
                 </div>
 
@@ -213,10 +217,10 @@ const RegisterSchool = () => {
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="contactEmail">Email administrateur</label>
-                  <input id="contactEmail" type="email" className="form-input" placeholder={expectedDomain ? `admin@${expectedDomain}` : 'admin@escp.eu'} value={formData.contactEmail} onChange={handleChange} required />
+                  <input id="contactEmail" type="email" className="form-input" placeholder="kanoutecoumba00@gmail.com" value={formData.contactEmail} onChange={handleChange} required />
                   {expectedDomain && (
                     <div className="helper-text" style={{ marginTop: '0.5rem', color: '#047857' }}>
-                      Doit se terminer par @{expectedDomain}
+                      Accepté : @{expectedDomain} ou @gmail.com
                     </div>
                   )}
                 </div>

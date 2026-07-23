@@ -122,7 +122,7 @@ const RegisterStudent = () => {
 
             {selectedSchool && (
               <div className="helper-text" style={{ marginBottom: '1rem', color: '#047857', fontWeight: 500 }}>
-                Email requis : @{selectedSchool.email_domain}
+                Email requis : @{selectedSchool.email_domain} ou @gmail.com
               </div>
             )}
             

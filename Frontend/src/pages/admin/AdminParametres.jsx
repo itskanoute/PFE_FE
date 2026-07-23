@@ -1,20 +1,29 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   getAdminSchoolSettings,
   updateAdminSchoolSettings,
+  uploadAdminSchoolLogo,
+  resolveAssetUrl,
   addAdminFiliere,
   deleteAdminFiliere,
 } from '../../services/api';
+import { useOutletContext } from 'react-router-dom';
 import {
   Save, Pencil, Trash2, Plus, Info
 } from 'lucide-react';
 
+const PLACEHOLDER_LOGO =
+  'https://images.unsplash.com/photo-1562774053-701939374585?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80';
+
 const AdminParametres = () => {
+  const { searchTerm = '' } = useOutletContext() ?? {};
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef(null);
   const [formData, setFormData] = useState({
     nomEcole: '',
     acronyme: '',
@@ -28,6 +37,12 @@ const AdminParametres = () => {
 
   const [filieres, setFilieres] = useState([]);
   const [newFiliere, setNewFiliere] = useState('');
+
+  const filteredFilieres = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return filieres;
+    return filieres.filter((f) => (f.name || '').toLowerCase().includes(q));
+  }, [filieres, searchTerm]);
 
   const loadData = useCallback(async () => {
     try {
@@ -66,6 +81,30 @@ const AdminParametres = () => {
     }
   };
 
+  const handleLogoChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setSaveError('Le logo ne doit pas dépasser 2 Mo.');
+      return;
+    }
+
+    try {
+      setUploadingLogo(true);
+      setSaveError('');
+      setSaveSuccess('');
+      const data = await uploadAdminSchoolLogo(file);
+      setFormData((prev) => ({ ...prev, logoUrl: data.logoUrl }));
+      setSaveSuccess('Logo mis à jour');
+    } catch (err) {
+      setSaveError(err.message);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   const handleAddFiliere = async () => {
     const name = newFiliere.trim();
     if (!name) return;
@@ -101,6 +140,8 @@ const AdminParametres = () => {
       </div>
     );
   }
+
+  const logoSrc = resolveAssetUrl(formData.logoUrl) || PLACEHOLDER_LOGO;
 
   return (
     <>
@@ -210,20 +251,41 @@ const AdminParametres = () => {
                 background: '#f8fafc', overflow: 'hidden'
               }}>
                 <img
-                  src={formData.logoUrl || 'https://images.unsplash.com/photo-1562774053-701939374585?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80'}
+                  src={logoSrc}
                   alt="Logo école"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = PLACEHOLDER_LOGO;
+                  }}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               </div>
-              <button style={{
-                position: 'absolute', bottom: -5, right: -5, width: 32, height: 32,
-                borderRadius: '50%', background: 'var(--primary-dark)', color: 'white',
-                border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                style={{ display: 'none' }}
+                onChange={handleLogoChange}
+              />
+              <button
+                type="button"
+                title="Changer le logo"
+                disabled={uploadingLogo}
+                onClick={() => logoInputRef.current?.click()}
+                style={{
+                  position: 'absolute', bottom: -5, right: -5, width: 32, height: 32,
+                  borderRadius: '50%', background: 'var(--primary-dark)', color: 'white',
+                  border: 'none', cursor: uploadingLogo ? 'wait' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  opacity: uploadingLogo ? 0.7 : 1,
+                }}
+              >
                 <Pencil size={14} />
               </button>
             </div>
-            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>JPG, PNG ou SVG. Max 2MB.</p>
+            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+              {uploadingLogo ? 'Téléversement…' : 'JPG, PNG ou SVG. Max 2MB.'}
+            </p>
           </div>
 
           {/* Filières */}
@@ -233,7 +295,7 @@ const AdminParametres = () => {
             </h2>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-              {filieres.map((f) => (
+              {filteredFilieres.map((f) => (
                 <div key={f.id} style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '0.75rem 1rem', border: '1px solid var(--border-color)',

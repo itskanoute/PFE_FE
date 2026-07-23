@@ -7,6 +7,7 @@ import schoolsRoutes from './routes/schools.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import responsableRoutes from './routes/responsable.routes.js';
+import etudiantRoutes from './routes/etudiant.routes.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -25,6 +26,7 @@ app.use(cors({
     process.env.CORS_ORIGIN,
   ].filter(Boolean),
   credentials: true,
+  exposedHeaders: ['Content-Disposition', 'Content-Type'],
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -46,6 +48,10 @@ app.get('/', (_req, res) => {
       me: 'GET /api/auth/me (Bearer token)',
       adminDashboard: 'GET /api/admin/dashboard (admin)',
       adminActivity: 'GET /api/admin/activity (admin)',
+      etudiantOffres: 'GET /api/etudiant/offres (etudiant)',
+      etudiantCandidatures: 'GET|POST /api/etudiant/candidatures (etudiant)',
+      etudiantSeances: 'GET /api/etudiant/seances (etudiant)',
+      etudiantProfil: 'GET|PUT /api/etudiant/profil (etudiant)',
       schools: 'GET /api/schools',
       filieres: 'GET /api/schools/:id/filieres',
     },
@@ -56,6 +62,7 @@ app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/responsable', responsableRoutes);
+app.use('/api/etudiant', etudiantRoutes);
 app.use('/api/schools', schoolsRoutes);
 
 app.use((_req, res) => {

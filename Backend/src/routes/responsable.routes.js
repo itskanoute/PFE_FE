@@ -9,6 +9,7 @@ import {
   updateOffer,
   toggleOfferStatus,
   getApplications,
+  downloadApplicationCv,
   reviewApplication,
   getSessions,
   createSession,
@@ -32,6 +33,7 @@ router.put('/offers/:id', updateOffer);
 router.patch('/offers/:id/status', toggleOfferStatus);
 
 router.get('/applications', getApplications);
+router.get('/applications/:id/cv', downloadApplicationCv);
 router.patch('/applications/:id', reviewApplication);
 
 router.get('/sessions', getSessions);

@@ -7,6 +7,7 @@ import {
   updateAdminResponsable,
   toggleAdminResponsableStatus,
   deleteAdminResponsable,
+  resendAdminResponsableCredentials,
   getAdminSchoolSettings,
 } from '../../services/api';
 import {
@@ -107,11 +108,14 @@ const AdminResponsables = () => {
         email: formData.email,
         department: formData.departement,
         phone: formData.telephone || undefined,
+        sendEmail,
       });
       setCreatedResp({
         ...formData,
         password: result.temporaryPassword,
         sendEmail,
+        emailSent: Boolean(result.emailSent),
+        emailWarning: result.emailWarning || null,
       });
       setShowModal(false);
       setShowConfirm(true);
@@ -163,6 +167,31 @@ const AdminResponsables = () => {
       });
       setShowConfirm(true);
       await loadData();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResendCredentials = async (responsable) => {
+    if (!responsable?.id) return;
+    setSubmitting(true);
+    try {
+      const result = await resendAdminResponsableCredentials(responsable.id);
+      const parts = (responsable.nom || '').split(' ');
+      setCreatedResp({
+        prenom: parts[0] || responsable.prenom || '',
+        nom: parts.slice(1).join(' ') || '',
+        email: result.email || responsable.email,
+        password: result.temporaryPassword,
+        sendEmail: true,
+        emailSent: Boolean(result.emailSent),
+        emailWarning: result.emailWarning || null,
+        isResend: true,
+      });
+      setShowPassword(true);
+      setShowConfirm(true);
     } catch (err) {
       alert(err.message);
     } finally {
@@ -335,14 +364,15 @@ const AdminResponsables = () => {
                     <Pencil size={16} />
                   </button>
                   {r.email && (
-                    <a
-                      href={`mailto:${r.email}?subject=Vos%20identifiants%20EduManage&body=Bonjour%20${encodeURIComponent(r.nom)},%0A%0AVoici%20vos%20identifiants%20de%20connexion%20pour%20le%20portail%20EduManage.%0A%0AEmail:%20${encodeURIComponent(r.email)}%0A%0ACordialement,%0AL'équipe%20Admin`}
+                    <button
+                      type="button"
                       className="header-icon-btn"
-                      title="Renvoyer identifiants"
-                      style={{ display: 'inline-flex', textDecoration: 'none', color: 'inherit' }}
+                      title="Renvoyer les identifiants"
+                      onClick={() => handleResendCredentials(r)}
+                      disabled={submitting}
                     >
                       <Link2 size={16} />
-                    </a>
+                    </button>
                   )}
                   <button
                     className="header-icon-btn"
@@ -449,7 +479,7 @@ const AdminResponsables = () => {
                 <label className="form-label" style={{ fontWeight: 600, color: 'var(--primary-dark)', fontSize: '0.8rem' }}>Email professionnel</label>
                 <input className="form-input" type="email" placeholder={`m.dupont@${emailDomain}`} value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                  L'adresse doit obligatoirement se terminer par @{emailDomain}
+                  Accepté : @{emailDomain} ou @gmail.com
                 </div>
               </div>
 
@@ -606,6 +636,7 @@ const AdminResponsables = () => {
               {createdResp.isEdit ? 'Profil mis à jour !' :
                createdResp.isDelete ? 'Responsable supprimé' :
                createdResp.isStatusChange ? 'Statut mis à jour !' :
+               createdResp.isResend ? 'Identifiants régénérés !' :
                'Responsable créé avec succès !'}
             </h2>
             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
@@ -614,9 +645,14 @@ const AdminResponsables = () => {
 
             {!createdResp.isEdit && !createdResp.isStatusChange && !createdResp.isDelete && (
               <>
-                {createdResp.sendEmail ? (
-                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                {createdResp.emailSent ? (
+                  <p style={{ fontSize: '0.875rem', color: '#047857', marginBottom: '1rem' }}>
                     📧 Identifiants envoyés à : <strong>{createdResp.email}</strong>
+                  </p>
+                ) : createdResp.sendEmail ? (
+                  <p style={{ fontSize: '0.875rem', color: '#b45309', marginBottom: '1rem' }}>
+                    ⚠️ Email non envoyé{createdResp.emailWarning ? ` — ${createdResp.emailWarning}` : ''}.
+                    Transmettez le mot de passe temporaire ci-dessous.
                   </p>
                 ) : (
                   <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>

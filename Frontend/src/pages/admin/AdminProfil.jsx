@@ -83,6 +83,9 @@ const AdminProfil = () => {
     }
   };
 
+  const avatarName = `${formData.prenom} ${formData.nom}`.trim() || 'Admin';
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(avatarName)}&background=0f0535&color=fff&size=120`;
+
   if (loading) {
     return <div className="content-card" style={{ padding: '2rem' }}>Chargement du profil...</div>;
   }
@@ -165,7 +168,7 @@ const AdminProfil = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', marginBottom: '2rem' }}>
                 <div style={{ position: 'relative' }}>
                   <img
-                    src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&auto=format&fit=crop&w=120&q=80"
+                    src={avatarUrl}
                     alt="Photo de profil"
                     style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--border-color)' }}
                   />

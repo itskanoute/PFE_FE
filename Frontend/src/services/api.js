@@ -38,6 +38,69 @@ export async function apiFetch(path, options = {}) {
   return data;
 }
 
+/** Télécharge un fichier protégé (CV, export paie…) avec le token JWT. */
+export async function downloadWithAuth(path, options = {}) {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Impossible de télécharger le fichier');
+  }
+
+  const filename = options.filename
+    || filenameFromDownloadResponse(response, path);
+
+  // Force le bon type MIME selon l'extension → Windows n'ouvre pas un .csv comme un .xls
+  const lower = filename.toLowerCase();
+  let mime = response.headers.get('Content-Type') || 'application/octet-stream';
+  if (lower.endsWith('.csv')) mime = 'text/csv;charset=utf-8';
+  else if (lower.endsWith('.xls')) mime = 'application/vnd.ms-excel';
+  else if (lower.endsWith('.xlsx')) mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  else if (lower.endsWith('.pdf')) mime = 'application/pdf';
+
+  const buffer = await response.arrayBuffer();
+  const blob = new Blob([buffer], { type: mime });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function filenameFromDownloadResponse(response, requestPath = '') {
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const utfMatch = disposition.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1].trim().replace(/^["']|["']$/g, ''));
+    } catch {
+      return utfMatch[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+
+  const plainMatch = disposition.match(/filename="([^"]+)"/i)
+    || disposition.match(/filename=([^;\s]+)/i);
+  if (plainMatch?.[1]) {
+    return plainMatch[1].replace(/^["']|["']$/g, '');
+  }
+
+  const type = (response.headers.get('Content-Type') || '').toLowerCase();
+  if (type.includes('csv')) return 'export-paie.csv';
+  if (type.includes('excel') || type.includes('spreadsheetml')) return 'export-paie.xls';
+  if (type.includes('pdf')) return 'document.pdf';
+
+  if (requestPath.includes('/export/')) return 'export-paie.csv';
+  if (requestPath.includes('/cv')) return 'cv.pdf';
+  return 'download';
+}
+
 export function saveAuth({ token, user }) {
   localStorage.setItem('token', token);
   localStorage.setItem('user', JSON.stringify(user));
@@ -145,12 +208,24 @@ export function getAdminActivity(params = {}) {
   return apiFetch(`/api/admin/activity${qs ? `?${qs}` : ''}`);
 }
 
+export function getAdminNotifications() {
+  return apiFetch('/api/admin/notifications');
+}
+
+export function markAdminNotificationsRead() {
+  return apiFetch('/api/admin/notifications/read-all', { method: 'PATCH' });
+}
+
 export function getAdminResponsables() {
   return apiFetch('/api/admin/responsables');
 }
 
 export function createAdminResponsable(data) {
   return apiFetch('/api/admin/responsables', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function resendAdminResponsableCredentials(id) {
+  return apiFetch(`/api/admin/responsables/${id}/resend-credentials`, { method: 'POST' });
 }
 
 export function updateAdminResponsable(id, data) {
@@ -178,6 +253,10 @@ export function getAdminStudent(id) {
   return apiFetch(`/api/admin/students/${id}`);
 }
 
+export function createAdminStudent(data) {
+  return apiFetch('/api/admin/students', { method: 'POST', body: JSON.stringify(data) });
+}
+
 export function getAdminHours(params = {}) {
   const searchParams = new URLSearchParams();
   if (params.month) searchParams.set('month', params.month);
@@ -186,12 +265,58 @@ export function getAdminHours(params = {}) {
   return apiFetch(`/api/admin/hours${qs ? `?${qs}` : ''}`);
 }
 
+export function getAdminExportPreview(params = {}) {
+  const searchParams = new URLSearchParams();
+  if (params.month) searchParams.set('month', params.month);
+  if (params.year) searchParams.set('year', params.year);
+  if (params.rate != null && params.rate !== '') searchParams.set('rate', params.rate);
+  const qs = searchParams.toString();
+  return apiFetch(`/api/admin/export/preview${qs ? `?${qs}` : ''}`);
+}
+
+export function getAdminExportHistory() {
+  return apiFetch('/api/admin/export/history');
+}
+
+export function downloadAdminExport(params = {}) {
+  const searchParams = new URLSearchParams();
+  if (params.month) searchParams.set('month', params.month);
+  if (params.year) searchParams.set('year', params.year);
+  const format = params.format === 'excel' || params.format === 'xlsx' || params.format === 'xls'
+    ? 'excel'
+    : 'csv';
+  searchParams.set('format', format);
+  if (params.rate != null && params.rate !== '') searchParams.set('rate', params.rate);
+  const qs = searchParams.toString();
+  const slug = `${params.year || 'export'}-${String(params.month || '').padStart(2, '0')}`;
+  const filename = format === 'excel'
+    ? `export-paie-${slug}.xls`
+    : `export-paie-${slug}.csv`;
+  return downloadWithAuth(`/api/admin/export/download?${qs}`, { filename });
+}
+
 export function getAdminSchoolSettings() {
   return apiFetch('/api/admin/school');
 }
 
 export function updateAdminSchoolSettings(data) {
   return apiFetch('/api/admin/school', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function uploadAdminSchoolLogo(logoFile) {
+  const formData = new FormData();
+  formData.append('logo', logoFile);
+  return apiFetch('/api/admin/school/logo', { method: 'POST', body: formData });
+}
+
+/** Résout une URL d'asset backend (/uploads/...) pour l'afficher côté frontend. */
+export function resolveAssetUrl(url) {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url) || url.startsWith('blob:') || url.startsWith('data:')) {
+    return url;
+  }
+  const base = API_URL || '';
+  return `${base}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
 export function addAdminFiliere(name) {
@@ -249,6 +374,10 @@ export function reviewResponsableApplication(id, action) {
   return apiFetch(`/api/responsable/applications/${id}`, { method: 'PATCH', body: JSON.stringify({ action }) });
 }
 
+export function downloadResponsableApplicationCv(id) {
+  return downloadWithAuth(`/api/responsable/applications/${id}/cv`);
+}
+
 export function getResponsableSessions() {
   return apiFetch('/api/responsable/sessions');
 }
@@ -279,4 +408,86 @@ export function updateResponsableProfile(data) {
 
 export function updateResponsablePassword(data) {
   return apiFetch('/api/responsable/profile/password', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+// ─── Étudiant ────────────────────────────────────────────────
+
+export function getEtudiantDashboard() {
+  return apiFetch('/api/etudiant/dashboard');
+}
+
+export function getEtudiantNotifications() {
+  return apiFetch('/api/etudiant/notifications');
+}
+
+export function markEtudiantNotificationsRead() {
+  return apiFetch('/api/etudiant/notifications/read-all', { method: 'PATCH' });
+}
+
+export function getEtudiantOffres() {
+  return apiFetch('/api/etudiant/offres');
+}
+
+export function getEtudiantCandidatures(params = {}) {
+  const qs = params.status ? `?status=${encodeURIComponent(params.status)}` : '';
+  return apiFetch(`/api/etudiant/candidatures${qs}`);
+}
+
+export function createEtudiantCandidature(data, cvFile = null) {
+  if (cvFile) {
+    const formData = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== false) {
+        formData.append(key, typeof value === 'boolean' ? String(value) : value);
+      }
+    });
+    formData.append('cv', cvFile);
+    return apiFetch('/api/etudiant/candidatures', { method: 'POST', body: formData });
+  }
+
+  return apiFetch('/api/etudiant/candidatures', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function downloadEtudiantCandidatureCv(id) {
+  return downloadWithAuth(`/api/etudiant/candidatures/${id}/cv`);
+}
+
+export function withdrawEtudiantCandidature(id) {
+  return apiFetch(`/api/etudiant/candidatures/${id}/withdraw`, { method: 'PATCH' });
+}
+
+export function getEtudiantSeances() {
+  return apiFetch('/api/etudiant/seances');
+}
+
+export function cancelEtudiantSeance(id, motif) {
+  return apiFetch(`/api/etudiant/seances/${id}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ motif }),
+  });
+}
+
+export function getEtudiantHeures(params = {}) {
+  const qs = params.month ? `?month=${encodeURIComponent(params.month)}` : '';
+  return apiFetch(`/api/etudiant/heures${qs}`);
+}
+
+export function getEtudiantHeuresDeclarables() {
+  return apiFetch('/api/etudiant/heures/declarables');
+}
+
+export function declareEtudiantHeures(data) {
+  return apiFetch('/api/etudiant/heures', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getEtudiantProfil() {
+  return apiFetch('/api/etudiant/profil');
+}
+
+export function updateEtudiantProfil(data) {
+  return apiFetch('/api/etudiant/profil', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function updateEtudiantPassword(data) {
+  return apiFetch('/api/etudiant/profil/password', { method: 'PUT', body: JSON.stringify(data) });
 }

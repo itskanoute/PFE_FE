@@ -1,20 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Home, 
-  FileText, 
-  Calendar, 
-  Clock, 
-  User, 
-  Bell, 
+import {
+  Home,
+  FileText,
+  Calendar,
+  Clock,
+  User,
+  Bell,
   HelpCircle,
   Search,
   Menu,
   X,
   CheckCircle2,
   AlertTriangle,
-  Info
+  Info,
+  LogOut
 } from 'lucide-react';
+import { getEtudiantProfil, getEtudiantNotifications, markEtudiantNotificationsRead, clearAuth } from '../../services/api';
 import './etudiant.css';
 
 const EtudiantLayout = () => {
@@ -22,17 +24,50 @@ const EtudiantLayout = () => {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [notifications, setNotifications] = useState([
-    { id: 1, text: "Votre candidature pour 'Base de données' a été acceptée !", time: "Il y a 2h", read: false, type: "success" },
-    { id: 2, text: "N'oubliez pas de renseigner votre IBAN dans votre profil.", time: "Hier", read: false, type: "warning" },
-    { id: 3, text: "Nouvelle offre : Développement Web Front-End", time: "Il y a 2 jours", read: true, type: "info" }
-  ]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [profile, setProfile] = useState({ name: '...', role: '', initials: '..' });
+  const [notifications, setNotifications] = useState([]);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const loadHeader = useCallback(() => {
+    Promise.all([
+      getEtudiantProfil().catch(() => null),
+      getEtudiantNotifications().catch(() => null),
+    ]).then(([profilData, notifData]) => {
+      const p = profilData?.profile;
+      if (p) {
+        const name = `${p.firstName} ${p.lastName}`;
+        setProfile({
+          name,
+          role: p.filiere || p.role || '',
+          initials: `${(p.firstName?.[0] || '')}${(p.lastName?.[0] || '')}`.toUpperCase() || 'ET',
+          firstName: p.firstName,
+          lastName: p.lastName,
+          email: p.email,
+          phone: p.phone || '',
+        });
+      }
 
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+      setNotifications(notifData?.notifications || []);
+    });
+  }, []);
+
+  useEffect(() => {
+    loadHeader();
+    setSearchTerm('');
+  }, [loadHeader, location.pathname]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const markAllAsRead = async () => {
+    try {
+      await markEtudiantNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch {
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    }
   };
+
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}&background=1e1b4b&color=fff`;
 
   const navItems = [
     { path: '/etudiant/dashboard', icon: <Home size={20} />, label: 'Accueil' },
@@ -44,15 +79,13 @@ const EtudiantLayout = () => {
 
   return (
     <div className="etudiant-layout">
-      {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 40 }}
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
       <aside className={`etudiant-sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="etudiant-logo-container">
           <div className="etudiant-logo-text">
@@ -71,7 +104,7 @@ const EtudiantLayout = () => {
             <NavLink
               key={item.path}
               to={item.path}
-              className={({ isActive }) => 
+              className={({ isActive }) =>
                 `etudiant-nav-item ${isActive ? 'active' : ''}`
               }
               onClick={() => setIsMobileMenuOpen(false)}
@@ -80,36 +113,58 @@ const EtudiantLayout = () => {
               {item.label}
             </NavLink>
           ))}
+
+          <button
+            type="button"
+            className="etudiant-nav-item"
+            onClick={() => {
+              clearAuth();
+              setIsMobileMenuOpen(false);
+              navigate('/login');
+            }}
+            style={{
+              width: '100%',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              textAlign: 'left',
+              color: '#ef4444',
+              marginTop: '0.5rem',
+            }}
+          >
+            <LogOut size={20} />
+            Déconnexion
+          </button>
         </nav>
 
         <div className="etudiant-user-profile" onClick={() => navigate('/etudiant/profil')}>
           <div className="etudiant-avatar">
-            <img src="https://ui-avatars.com/api/?name=Lucas+Bernard&background=1e1b4b&color=fff" alt="Avatar" style={{ borderRadius: '50%', width: '100%', height: '100%' }} />
+            <img src={avatarUrl} alt="Avatar" style={{ borderRadius: '50%', width: '100%', height: '100%' }} />
           </div>
           <div className="etudiant-user-info">
-            <span className="etudiant-user-name">Lucas Bernard</span>
-            <span className="etudiant-user-role">L3 Informatique</span>
+            <span className="etudiant-user-name">{profile.name}</span>
+            <span className="etudiant-user-role">{profile.role}</span>
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="etudiant-main">
-        {/* Header */}
         <header className="etudiant-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button 
-              className="etudiant-mobile-menu-btn" 
+            <button
+              className="etudiant-mobile-menu-btn"
               onClick={() => setIsMobileMenuOpen(true)}
             >
               <Menu size={20} />
             </button>
             <div className="etudiant-search-container">
               <Search size={18} color="#94a3b8" />
-              <input 
-                type="text" 
-                className="etudiant-search-input" 
+              <input
+                type="text"
+                className="etudiant-search-input"
                 placeholder="Rechercher une offre, une séance..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
           </div>
@@ -120,7 +175,7 @@ const EtudiantLayout = () => {
                 <Bell size={20} />
                 {unreadCount > 0 && <span className="etudiant-notification-badge">{unreadCount}</span>}
               </button>
-              
+
               {isNotificationsOpen && (
                 <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', width: '350px', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0', zIndex: 50, overflow: 'hidden' }}>
                   <div style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
@@ -137,7 +192,7 @@ const EtudiantLayout = () => {
                         Aucune notification
                       </div>
                     ) : (
-                      notifications.map(notif => (
+                      notifications.map((notif) => (
                         <div key={notif.id} style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', backgroundColor: notif.read ? 'white' : '#eff6ff', display: 'flex', gap: '1rem', transition: 'background-color 0.2s' }}>
                           <div style={{ marginTop: '0.25rem' }}>
                             {notif.type === 'success' && <CheckCircle2 size={18} color="#16a34a" />}
@@ -160,18 +215,22 @@ const EtudiantLayout = () => {
                 </div>
               )}
             </div>
-            <button className="etudiant-icon-button">
+            <a
+              href="mailto:support@edumanage.fr?subject=Aide%20EduManage%20-%20Étudiant"
+              className="etudiant-icon-button"
+              title="Contacter le support"
+              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
               <HelpCircle size={20} />
-            </button>
+            </a>
             <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', cursor: 'pointer' }} onClick={() => navigate('/etudiant/profil')}>
-              <img src="https://ui-avatars.com/api/?name=Lucas+Bernard&background=1e1b4b&color=fff" alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img src={avatarUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
           </div>
         </header>
 
-        {/* Dynamic Page Content */}
         <div className="etudiant-content">
-          <Outlet />
+          <Outlet context={{ profile, refreshLayout: loadHeader, searchTerm, setSearchTerm }} />
         </div>
       </main>
     </div>

@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { BookOpen, Star, Check, X, FileText, Download, RefreshCw, Mail, Phone } from 'lucide-react';
-import { getResponsableApplications, reviewResponsableApplication } from '../../services/api';
+import { getResponsableApplications, reviewResponsableApplication, downloadResponsableApplicationCv } from '../../services/api';
 import './responsable.css';
 
 const ResponsableCandidatures = () => {
+  const { searchTerm = '' } = useOutletContext() || {};
   const [filter, setFilter] = useState('en_attente');
   const [candidaturesList, setCandidaturesList] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -12,6 +14,20 @@ const ResponsableCandidatures = () => {
   const [actionLoading, setActionLoading] = useState(null);
   const [isCVModalOpen, setIsCVModalOpen] = useState(false);
   const [selectedCandidat, setSelectedCandidat] = useState(null);
+  const [cvPreviewUrl, setCvPreviewUrl] = useState(null);
+  const [cvLoading, setCvLoading] = useState(false);
+  const [cvError, setCvError] = useState('');
+
+  const displayedCandidatures = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return candidaturesList;
+    return candidaturesList.filter((c) =>
+      (c.nom || c.name || '').toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q) ||
+      (c.matiere || c.offerTitle || '').toLowerCase().includes(q) ||
+      (c.filiere || '').toLowerCase().includes(q)
+    );
+  }, [candidaturesList, searchTerm]);
 
   const loadApplications = useCallback(async () => {
     setLoading(true);
@@ -43,10 +59,13 @@ const ResponsableCandidatures = () => {
   const handleReview = async (id, action) => {
     setActionLoading(id);
     try {
-      await reviewResponsableApplication(id, action);
-      const candidat = candidaturesList.find((c) => c.id === id);
-      if (action === 'accept' && candidat?.email) {
-        window.location.href = `mailto:${candidat.email}?subject=Candidature Acceptée - ${candidat.matiere}&body=Bonjour ${candidat.name},%0D%0A%0D%0ANous avons le plaisir de vous informer que votre candidature pour être assistant en ${candidat.matiere} a été acceptée.`;
+      const result = await reviewResponsableApplication(id, action);
+      if (result.emailSent) {
+        alert(action === 'accept'
+          ? 'Candidature acceptée. Un email a été envoyé à l\'étudiant.'
+          : 'Candidature refusée. Un email a été envoyé à l\'étudiant.');
+      } else if (result.emailWarning) {
+        alert(`${action === 'accept' ? 'Candidature acceptée' : 'Candidature refusée'}. ${result.emailWarning}`);
       }
       loadApplications();
     } catch (err) {
@@ -57,12 +76,13 @@ const ResponsableCandidatures = () => {
   };
 
   const handleRepecher = async (id) => {
-    const candidat = candidaturesList.find((c) => c.id === id);
     setActionLoading(id);
     try {
-      await reviewResponsableApplication(id, 'accept');
-      if (candidat?.email) {
-        window.location.href = `mailto:${candidat.email}?subject=Candidature Repêchée - ${candidat.matiere}&body=Bonjour ${candidat.name},%0D%0A%0D%0ANous avons réévalué votre candidature en ${candidat.matiere} et souhaitons nous entretenir avec vous.`;
+      const result = await reviewResponsableApplication(id, 'accept');
+      if (result.emailSent) {
+        alert('Candidature acceptée. Un email a été envoyé à l\'étudiant.');
+      } else if (result.emailWarning) {
+        alert(`Candidature acceptée. ${result.emailWarning}`);
       }
       loadApplications();
     } catch (err) {
@@ -72,9 +92,60 @@ const ResponsableCandidatures = () => {
     }
   };
 
-  const handleVoirCV = (candidature) => {
+  const handleVoirCV = async (candidature) => {
     setSelectedCandidat(candidature);
     setIsCVModalOpen(true);
+    setCvPreviewUrl(null);
+    setCvError('');
+
+    if (!candidature.hasCv) return;
+
+    setCvLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const API_URL = import.meta.env.VITE_API_URL || '';
+      const response = await fetch(`${API_URL}/api/responsable/applications/${candidature.id}/cv`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'CV introuvable');
+      }
+      const blob = await response.blob();
+      const header = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+      const magic = String.fromCharCode(...header);
+      if (magic !== '%PDF-') {
+        throw new Error('Le fichier joint n\'est pas un PDF valide. Demandez à l\'étudiant de rejoindre un vrai CV PDF.');
+      }
+      const pdfBlob = blob.type === 'application/pdf'
+        ? blob
+        : new Blob([blob], { type: 'application/pdf' });
+      setCvPreviewUrl(URL.createObjectURL(pdfBlob));
+    } catch (err) {
+      setCvError(err.message);
+    } finally {
+      setCvLoading(false);
+    }
+  };
+
+  const handleDownloadCV = async () => {
+    if (!selectedCandidat?.hasCv) {
+      alert('Aucun CV joint à cette candidature');
+      return;
+    }
+    try {
+      await downloadResponsableApplicationCv(selectedCandidat.id);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const closeCvModal = () => {
+    if (cvPreviewUrl) URL.revokeObjectURL(cvPreviewUrl);
+    setCvPreviewUrl(null);
+    setCvError('');
+    setIsCVModalOpen(false);
+    setSelectedCandidat(null);
   };
 
   if (loading) {
@@ -153,8 +224,12 @@ const ResponsableCandidatures = () => {
             <h3 style={{ color: 'var(--resp-text)', marginBottom: '0.5rem' }}>Aucune candidature</h3>
             <p style={{ color: 'var(--resp-text-light)' }}>Il n'y a pas de candidatures correspondant à ce filtre pour le moment.</p>
           </div>
+        ) : displayedCandidatures.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid var(--resp-border)' }}>
+            <p style={{ color: 'var(--resp-text-light)', margin: 0 }}>Aucun résultat pour « {searchTerm} ».</p>
+          </div>
         ) : (
-          candidaturesList.map((candidature) => (
+          displayedCandidatures.map((candidature) => (
             <div key={candidature.id} style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid var(--resp-border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className="resp-card-hover">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderBottom: '1px solid var(--resp-border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -239,9 +314,28 @@ const ResponsableCandidatures = () => {
                     </div>
                   </div>
 
-                  <button onClick={() => handleVoirCV(candidature)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', backgroundColor: 'white', color: 'var(--resp-primary)', border: '1px solid var(--resp-primary)', padding: '0.75rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', marginTop: 'auto' }}>
+                  <button
+                    onClick={() => handleVoirCV(candidature)}
+                    disabled={!candidature.hasCv}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      backgroundColor: 'white',
+                      color: candidature.hasCv ? 'var(--resp-primary)' : '#94a3b8',
+                      border: `1px solid ${candidature.hasCv ? 'var(--resp-primary)' : '#e2e8f0'}`,
+                      padding: '0.75rem',
+                      borderRadius: '8px',
+                      fontWeight: 600,
+                      cursor: candidature.hasCv ? 'pointer' : 'not-allowed',
+                      transition: 'all 0.2s',
+                      marginTop: 'auto',
+                      opacity: candidature.hasCv ? 1 : 0.7,
+                    }}
+                  >
                     <FileText size={16} />
-                    Voir le CV
+                    {candidature.hasCv ? 'Voir / Télécharger le CV' : 'Aucun CV joint'}
                   </button>
                 </div>
 
@@ -291,45 +385,44 @@ const ResponsableCandidatures = () => {
                 </div>
               </div>
               <button
-                onClick={() => setIsCVModalOpen(false)}
+                onClick={closeCvModal}
                 style={{ background: 'none', border: 'none', color: 'var(--resp-text-light)', cursor: 'pointer', padding: '0.5rem' }}
               >
                 <X size={24} />
               </button>
             </div>
 
-            <div style={{ flex: 1, padding: '2rem', backgroundColor: '#e2e8f0', overflowY: 'auto', display: 'flex', justifyContent: 'center' }}>
-              <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '600px', padding: '3rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', minHeight: '800px' }}>
-                <h1 style={{ fontSize: '2rem', color: '#0f172a', marginBottom: '0.5rem', borderBottom: '2px solid #0f172a', paddingBottom: '1rem' }}>{selectedCandidat.name}</h1>
-                <p style={{ color: '#475569', marginBottom: '2rem' }}>Étudiant • Spécialité {selectedCandidat.matiere}</p>
-
-                <h2 style={{ fontSize: '1.2rem', color: '#0f172a', marginTop: '2rem', marginBottom: '1rem' }}>Expérience & Projets</h2>
-                <ul style={{ color: '#334155', lineHeight: 1.8, paddingLeft: '1.5rem' }}>
-                  <li>Participation à de multiples projets universitaires en {selectedCandidat.matiere}.</li>
-                  <li>Excellent relationnel et habitude du travail en équipe.</li>
-                  <li>Note obtenue : {selectedCandidat.grade}.</li>
-                </ul>
-
-                <h2 style={{ fontSize: '1.2rem', color: '#0f172a', marginTop: '2rem', marginBottom: '1rem' }}>Compétences Techniques</h2>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <span style={{ padding: '0.3rem 0.8rem', backgroundColor: '#f1f5f9', borderRadius: '4px', fontSize: '0.85rem' }}>Pédagogie</span>
-                  <span style={{ padding: '0.3rem 0.8rem', backgroundColor: '#f1f5f9', borderRadius: '4px', fontSize: '0.85rem' }}>{selectedCandidat.matiere}</span>
-                  <span style={{ padding: '0.3rem 0.8rem', backgroundColor: '#f1f5f9', borderRadius: '4px', fontSize: '0.85rem' }}>Communication</span>
+            <div style={{ flex: 1, padding: '1rem', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'stretch' }}>
+              {!selectedCandidat.hasCv ? (
+                <div style={{ margin: 'auto', color: '#64748b', textAlign: 'center' }}>Aucun CV n'a été joint à cette candidature.</div>
+              ) : cvLoading ? (
+                <div style={{ margin: 'auto', color: '#64748b' }}>Chargement du CV…</div>
+              ) : cvError ? (
+                <div style={{ margin: 'auto', color: '#b91c1c', textAlign: 'center', maxWidth: '420px', padding: '1rem' }}>
+                  {cvError}
                 </div>
-              </div>
+              ) : cvPreviewUrl ? (
+                <iframe title="CV PDF" src={`${cvPreviewUrl}#toolbar=1`} style={{ width: '100%', height: '100%', border: 'none', borderRadius: '8px', background: 'white' }} />
+              ) : (
+                <div style={{ margin: 'auto', color: '#64748b' }}>Impossible d'afficher le CV.</div>
+              )}
             </div>
 
             <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--resp-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white' }}>
-              <button style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--resp-primary)', background: 'none', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+              <button
+                onClick={handleDownloadCV}
+                disabled={!selectedCandidat.hasCv}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: selectedCandidat.hasCv ? 'var(--resp-primary)' : '#94a3b8', background: 'none', border: 'none', fontWeight: 600, cursor: selectedCandidat.hasCv ? 'pointer' : 'not-allowed' }}
+              >
                 <Download size={18} /> Télécharger le PDF
               </button>
 
               {selectedCandidat.status === 'en_attente' && (
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button onClick={() => { handleReview(selectedCandidat.id, 'reject'); setIsCVModalOpen(false); }} style={{ padding: '0.5rem 1.5rem', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: 'var(--resp-danger)', fontWeight: 600, cursor: 'pointer' }}>
+                  <button onClick={() => { handleReview(selectedCandidat.id, 'reject'); closeCvModal(); }} style={{ padding: '0.5rem 1.5rem', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: 'var(--resp-danger)', fontWeight: 600, cursor: 'pointer' }}>
                     Refuser
                   </button>
-                  <button onClick={() => { handleReview(selectedCandidat.id, 'accept'); setIsCVModalOpen(false); }} style={{ padding: '0.5rem 1.5rem', borderRadius: '6px', border: 'none', backgroundColor: 'var(--resp-success)', color: 'white', fontWeight: 600, cursor: 'pointer' }}>
+                  <button onClick={() => { handleReview(selectedCandidat.id, 'accept'); closeCvModal(); }} style={{ padding: '0.5rem 1.5rem', borderRadius: '6px', border: 'none', backgroundColor: 'var(--resp-success)', color: 'white', fontWeight: 600, cursor: 'pointer' }}>
                     Accepter
                   </button>
                 </div>

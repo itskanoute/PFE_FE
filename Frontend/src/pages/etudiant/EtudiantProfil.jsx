@@ -1,25 +1,30 @@
-import React, { useState } from 'react';
-import { Camera, Lock, CheckCircle2, AlertTriangle, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Camera, Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { useOutletContext } from 'react-router-dom';
+import { getEtudiantProfil, updateEtudiantProfil, updateEtudiantPassword } from '../../services/api';
 
 const EtudiantProfil = () => {
-  const [profileData] = useState({
-    firstName: 'Léa',
-    lastName: 'Martin',
-    email: 'lea.martin@escp.eu',
-    studentId: '20230456',
-    school: 'ESCP Business School',
-    role: 'Master in Management (MiM)',
-    verified: true,
+  const { refreshLayout } = useOutletContext() || {};
+
+  const [profileData, setProfileData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    studentId: '',
+    school: '',
+    role: '',
+    verified: false,
   });
 
-  const [phone, setPhone] = useState('06 12 34 56 78');
-  const [filiere, setFiliere] = useState('Informatique');
-  const [annee, setAnnee] = useState('Licence 3 (L3)');
+  const [phone, setPhone] = useState('');
+  const [filiere, setFiliere] = useState('');
+  const [annee, setAnnee] = useState('');
+  const [ibanMissing, setIbanMissing] = useState(false);
 
   const [banque, setBanque] = useState({
-    titulaire: 'Léa Martin',
-    iban: 'FR76 1234 5678 9012 3456 7890 123',
-    bic: 'BNPAFRPP'
+    titulaire: '',
+    iban: '',
+    bic: ''
   });
 
   const [passwords, setPasswords] = useState({
@@ -28,17 +33,89 @@ const EtudiantProfil = () => {
     confirm: ''
   });
 
-  // State for restoring on Cancel
-  const [initialState, setInitialState] = useState({ phone, filiere, annee, banque });
+  const [initialState, setInitialState] = useState({ phone: '', filiere: '', annee: '', banque: { titulaire: '', iban: '', bic: '' } });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSave = () => {
-    if (passwords.new && passwords.new !== passwords.confirm) {
-      alert("Les nouveaux mots de passe ne correspondent pas !");
-      return;
+  const applyProfile = (profile) => {
+    const nextPhone = profile.phone || '';
+    const nextFiliere = profile.filiere || '';
+    const nextAnnee = profile.annee || '';
+    const nextBanque = {
+      titulaire: profile.banque?.titulaire || '',
+      iban: profile.banque?.iban || '',
+      bic: profile.banque?.bic || '',
+    };
+
+    setProfileData({
+      firstName: profile.firstName || '',
+      lastName: profile.lastName || '',
+      email: profile.email || '',
+      studentId: profile.studentId || '',
+      school: profile.school || '',
+      role: profile.role || '',
+      verified: Boolean(profile.verified),
+    });
+    setPhone(nextPhone);
+    setFiliere(nextFiliere);
+    setAnnee(nextAnnee);
+    setBanque(nextBanque);
+    setIbanMissing(Boolean(profile.ibanMissing));
+    setInitialState({ phone: nextPhone, filiere: nextFiliere, annee: nextAnnee, banque: nextBanque });
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    setError('');
+    getEtudiantProfil()
+      .then((data) => {
+        if (data.profile) applyProfile(data.profile);
+      })
+      .catch((err) => setError(err.message || 'Erreur de chargement'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    if (passwords.new || passwords.confirm || passwords.current) {
+      if (!passwords.current || !passwords.new || !passwords.confirm) {
+        alert('Veuillez remplir tous les champs mot de passe.');
+        return;
+      }
+      if (passwords.new !== passwords.confirm) {
+        alert("Les nouveaux mots de passe ne correspondent pas !");
+        return;
+      }
     }
-    alert("Profil mis à jour avec succès !");
-    setInitialState({ phone, filiere, annee, banque });
-    setPasswords({ current: '', new: '', confirm: '' });
+
+    setSaving(true);
+    setError('');
+    try {
+      await updateEtudiantProfil({
+        phone,
+        titulaire: banque.titulaire,
+        iban: banque.iban,
+        bic: banque.bic,
+      });
+
+      if (passwords.current && passwords.new && passwords.confirm) {
+        await updateEtudiantPassword({
+          currentPassword: passwords.current,
+          newPassword: passwords.new,
+          confirmPassword: passwords.confirm,
+        });
+      }
+
+      const refreshed = await getEtudiantProfil();
+      if (refreshed.profile) applyProfile(refreshed.profile);
+      setPasswords({ current: '', new: '', confirm: '' });
+      refreshLayout?.();
+      alert("Profil mis à jour avec succès !");
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -55,28 +132,41 @@ const EtudiantProfil = () => {
     }
   };
 
+  const avatarName = `${profileData.firstName} ${profileData.lastName}`.trim() || 'Etudiant';
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(avatarName)}&background=1e1b4b&color=fff&size=100`;
+
+  if (loading) {
+    return <div style={{ color: '#64748b', padding: '2rem' }}>Chargement du profil…</div>;
+  }
+
   return (
     <div style={{ paddingBottom: '3rem' }}>
-      
-      {/* Missing IBAN Alert (example, though here it's filled, let's keep the UI from mockup) */}
-      <div className="etudiant-alert" style={{ backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <AlertTriangle size={18} />
-          <span><span style={{ fontWeight: 700 }}>Profil incomplet</span> — Veuillez renseigner votre IBAN</span>
-        </div>
-      </div>
 
-      {/* Header Profile */}
+      {error && (
+        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px', fontSize: '0.9rem' }}>
+          {error}
+        </div>
+      )}
+
+      {ibanMissing && (
+        <div className="etudiant-alert" style={{ backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <AlertTriangle size={18} />
+            <span><span style={{ fontWeight: 700 }}>Profil incomplet</span> — Veuillez renseigner votre IBAN</span>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '2.5rem' }}>
         <div style={{ position: 'relative' }}>
           <div style={{ width: '100px', height: '100px', borderRadius: '16px', overflow: 'hidden', border: '2px solid #e2e8f0' }}>
-            <img src="https://ui-avatars.com/api/?name=Lea+Martin&background=1e1b4b&color=fff&size=100" alt="Léa Martin" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={avatarUrl} alt={avatarName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <button style={{ position: 'absolute', bottom: '-10px', right: '-10px', width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#1e1b4b', color: 'white', border: '2px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <Camera size={16} />
           </button>
         </div>
-        
+
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.25rem 0' }}>{profileData.firstName} {profileData.lastName}</h1>
           <p style={{ fontSize: '0.9rem', color: '#475569', margin: '0 0 0.5rem 0' }}>{profileData.role} • {profileData.school}</p>
@@ -91,8 +181,7 @@ const EtudiantProfil = () => {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-        
-        {/* Read-only Personal Info */}
+
         <div className="etudiant-card">
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', margin: '0 0 1.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             Informations Personnelles <Lock size={16} color="#94a3b8" />
@@ -131,7 +220,6 @@ const EtudiantProfil = () => {
           </div>
         </div>
 
-        {/* Editable Info */}
         <div className="etudiant-card">
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', margin: '0 0 1.5rem 0' }}>Informations Modifiables</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
@@ -151,12 +239,14 @@ const EtudiantProfil = () => {
                 <option value="Licence 3 (L3)">Licence 3 (L3)</option>
                 <option value="Master 1 (M1)">Master 1 (M1)</option>
                 <option value="Master 2 (M2)">Master 2 (M2)</option>
+                {annee && !['Licence 1 (L1)', 'Licence 2 (L2)', 'Licence 3 (L3)', 'Master 1 (M1)', 'Master 2 (M2)'].includes(annee) && (
+                  <option value={annee}>{annee}</option>
+                )}
               </select>
             </div>
           </div>
         </div>
 
-        {/* Bank Info */}
         <div className="etudiant-card">
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', margin: '0 0 1.5rem 0' }}>Informations Bancaires</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
@@ -168,9 +258,11 @@ const EtudiantProfil = () => {
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '0.5rem', textTransform: 'uppercase' }}>IBAN</label>
               <div style={{ position: 'relative' }}>
                 <input type="text" value={banque.iban} onChange={e => setBanque({...banque, iban: e.target.value})} style={{ width: '100%', padding: '0.75rem 1rem', paddingRight: '2.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', color: '#0f172a', letterSpacing: '1px' }} />
-                <div style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#16a34a' }}>
-                  <CheckCircle2 size={16} />
-                </div>
+                {banque.iban && (
+                  <div style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#16a34a' }}>
+                    <CheckCircle2 size={16} />
+                  </div>
+                )}
               </div>
             </div>
             <div>
@@ -180,7 +272,6 @@ const EtudiantProfil = () => {
           </div>
         </div>
 
-        {/* Security */}
         <div className="etudiant-card">
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', margin: '0 0 1.5rem 0' }}>Sécurité</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
@@ -199,17 +290,15 @@ const EtudiantProfil = () => {
           </div>
         </div>
 
-        {/* Save Actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
           <button onClick={handleCancel} style={{ backgroundColor: 'white', color: '#475569', border: '1px solid #cbd5e1', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>
             Annuler
           </button>
-          <button onClick={handleSave} style={{ backgroundColor: '#1e1b4b', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>
-            Enregistrer les modifications
+          <button onClick={handleSave} disabled={saving} style={{ backgroundColor: '#1e1b4b', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
           </button>
         </div>
 
-        {/* Danger Zone */}
         <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem' }}>
           <div>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#dc2626', margin: '0 0 0.25rem 0' }}>Supprimer le compte</h3>

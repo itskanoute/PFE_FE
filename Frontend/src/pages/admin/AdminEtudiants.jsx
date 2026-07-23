@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import AnimatedCounter from '../../components/AnimatedCounter';
-import { getAdminStudents } from '../../services/api';
+import { getAdminStudents, createAdminStudent } from '../../services/api';
 import {
   Users, ShieldCheck, CreditCard, AlertTriangle,
   Filter, ChevronDown, MoreVertical, Mail,
@@ -41,9 +41,10 @@ const AdminEtudiants = () => {
   const [selectedEtudiant, setSelectedEtudiant] = useState(null);
 
   const [createdEtudiant, setCreatedEtudiant] = useState(null);
-  const [generatedPassword, setGeneratedPassword] = useState('Etud!9#2026');
+  const [generatedPassword, setGeneratedPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [sendEmail, setSendEmail] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     nom: '', prenom: '', email: '', filiere: '', identifiant: ''
   });
@@ -71,12 +72,36 @@ const AdminEtudiants = () => {
     loadData();
   }, [loadData]);
 
-  const handleCreate = (e) => {
+  const handleCreate = async (e) => {
     e.preventDefault();
-    setCreatedEtudiant({ ...formData, password: generatedPassword });
-    setShowModal(false);
-    setShowConfirm(true);
-    setFormData({ nom: '', prenom: '', email: '', filiere: '', identifiant: '' });
+    setSubmitting(true);
+    try {
+      const result = await createAdminStudent({
+        firstName: formData.prenom,
+        lastName: formData.nom,
+        email: formData.email,
+        studentNumber: formData.identifiant,
+        major: formData.filiere,
+        sendEmail,
+      });
+      setCreatedEtudiant({
+        ...formData,
+        password: result.temporaryPassword,
+        sendEmail,
+        emailSent: Boolean(result.emailSent),
+        emailWarning: result.emailWarning || null,
+      });
+      setGeneratedPassword(result.temporaryPassword || '');
+      setShowPassword(true);
+      setShowModal(false);
+      setShowConfirm(true);
+      setFormData({ nom: '', prenom: '', email: '', filiere: '', identifiant: '' });
+      await loadData();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const filteredEtudiants = useMemo(() => {
@@ -215,6 +240,19 @@ const AdminEtudiants = () => {
                     </span>
                     {!e.ibanOk && e.statut === 'assistant' && (
                       <button
+                        type="button"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          if (!e.email) {
+                            alert("Aucun email trouvé pour cet étudiant.");
+                            return;
+                          }
+                          const subject = encodeURIComponent('Rappel — IBAN manquant sur EduManage');
+                          const body = encodeURIComponent(
+                            `Bonjour ${e.firstName || e.prenom || ''},\n\nVotre dossier indique que votre IBAN n'est pas encore renseigné.\nMerci de le compléter dans votre profil EduManage afin de permettre le versement de vos heures.\n\nCordialement,\nL'administration`
+                          );
+                          window.location.href = `mailto:${e.email}?subject=${subject}&body=${body}`;
+                        }}
                         style={{
                           display: 'flex', alignItems: 'center', gap: '4px',
                           fontSize: '0.65rem', color: '#dc2626', fontWeight: 700,
@@ -371,7 +409,7 @@ const AdminEtudiants = () => {
                 <label className="form-label" style={{ fontWeight: 600, color: 'var(--primary-dark)', fontSize: '0.8rem' }}>Email institutionnel</label>
                 <input className="form-input" type="email" placeholder="l.martin@university.fr" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                  L'adresse doit appartenir au domaine de l'école.
+                  Accepté : domaine de l'école ou @gmail.com
                 </div>
               </div>
 
@@ -387,9 +425,18 @@ const AdminEtudiants = () => {
                       required
                     >
                       <option value="" disabled hidden>Choisir une filière</option>
-                      <option value="L2 Informatique">L2 Informatique</option>
-                      <option value="L3 Informatique">L3 Informatique</option>
-                      <option value="M1 Management">M1 Management</option>
+                      {filieres.length > 0 ? (
+                        filieres.map((f) => (
+                          <option key={f} value={f}>{f}</option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="L2 Informatique">L2 Informatique</option>
+                          <option value="L3 Informatique">L3 Informatique</option>
+                          <option value="M1 Informatique">M1 Informatique</option>
+                          <option value="M2 Informatique">M2 Informatique</option>
+                        </>
+                      )}
                     </select>
                     <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
                   </div>
@@ -397,7 +444,7 @@ const AdminEtudiants = () => {
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontWeight: 600, color: 'var(--primary-dark)', fontSize: '0.8rem' }}>Numéro étudiant</label>
-                  <input className="form-input" placeholder="Ex: #2023-0001" value={formData.identifiant} onChange={(e) => setFormData({ ...formData, identifiant: e.target.value })} required />
+                  <input className="form-input" placeholder="Ex: 2023-0001" value={formData.identifiant} onChange={(e) => setFormData({ ...formData, identifiant: e.target.value })} required />
                 </div>
               </div>
 
@@ -408,31 +455,12 @@ const AdminEtudiants = () => {
                     <Lock size={14} /> Mot de passe temporaire
                   </div>
                   <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                    Généré automatiquement
+                    Généré automatiquement à l'inscription
                   </div>
                 </div>
-                
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <div style={{ flex: 1, position: 'relative' }}>
-                    <input 
-                      type={showPassword ? 'text' : 'password'} 
-                      className="form-input" 
-                      value={generatedPassword} 
-                      readOnly 
-                      style={{ paddingRight: '2.5rem', fontWeight: 600, background: 'white' }} 
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowPassword(!showPassword)} 
-                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  <button type="button" onClick={() => navigator.clipboard.writeText(generatedPassword)} className="btn-action outline" style={{ background: 'white', color: 'var(--primary-dark)', borderColor: 'var(--border-color)', gap: '6px', fontWeight: 600 }}>
-                    <Copy size={16} /> Copier
-                  </button>
-                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+                  Un mot de passe sécurisé sera créé et affiché après validation (et envoyé par email si demandé).
+                </p>
               </div>
 
               {/* Envoi identifiants */}
@@ -464,8 +492,8 @@ const AdminEtudiants = () => {
 
               <div style={{ background: '#f8fafc', margin: '0 -2rem -2rem -2rem', padding: '1.25rem 2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem', borderTop: '1px solid var(--border-color)', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)' }}>
                 <button type="button" className="btn-action outline" onClick={() => setShowModal(false)} style={{ fontWeight: 600, color: 'var(--primary-dark)' }}>Annuler</button>
-                <button type="submit" className="btn-action primary" style={{ fontWeight: 600 }}>
-                  <UserPlus size={18} /> Inscrire l'étudiant
+                <button type="submit" className="btn-action primary" style={{ fontWeight: 600 }} disabled={submitting}>
+                  <UserPlus size={18} /> {submitting ? 'Inscription...' : "Inscrire l'étudiant"}
                 </button>
               </div>
             </form>
@@ -484,10 +512,39 @@ const AdminEtudiants = () => {
             width: '100%', maxWidth: '420px', textAlign: 'center'
           }}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>Opération réussie !</h2>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-              L'action sur l'étudiant {createdEtudiant.prenom} {createdEtudiant.nom} a bien été enregistrée.
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>Étudiant inscrit !</h2>
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+              🎓 {createdEtudiant.prenom} {createdEtudiant.nom}
             </p>
+            {createdEtudiant.emailSent ? (
+              <p style={{ fontSize: '0.875rem', color: '#047857', marginBottom: '1rem' }}>
+                📧 Identifiants envoyés à <strong>{createdEtudiant.email}</strong>
+              </p>
+            ) : createdEtudiant.sendEmail ? (
+              <p style={{ fontSize: '0.875rem', color: '#b45309', marginBottom: '1rem' }}>
+                ⚠️ Email non envoyé{createdEtudiant.emailWarning ? ` — ${createdEtudiant.emailWarning}` : ''}.
+              </p>
+            ) : (
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                Transmettez manuellement les accès à <strong>{createdEtudiant.email}</strong>
+              </p>
+            )}
+            {createdEtudiant.password && (
+              <div style={{ background: '#f8fafc', borderRadius: 'var(--radius-md)', padding: '1rem', marginBottom: '1rem', border: '1px solid var(--border-color)', textAlign: 'left' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Mot de passe temporaire</div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <code style={{ flex: 1, fontWeight: 700, fontSize: '0.9rem' }}>
+                    {showPassword ? createdEtudiant.password : '••••••••••'}
+                  </code>
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                  <button type="button" onClick={() => navigator.clipboard.writeText(createdEtudiant.password)} className="btn-action outline" style={{ padding: '0.4rem 0.6rem' }}>
+                    <Copy size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
             <button className="btn-action primary" style={{ padding: '0.75rem 2rem' }} onClick={() => { setShowConfirm(false); setCreatedEtudiant(null); }}>
               OK ✅
             </button>

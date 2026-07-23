@@ -1,6 +1,9 @@
 import bcrypt from 'bcryptjs';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { query, withTransaction } from '../config/db.js';
-import { emailMatchesDomain, validatePassword } from '../utils/auth.helpers.js';
+import { emailMatchesDomain, allowedEmailDomainsLabel, validatePassword, validateStudyYear } from '../utils/auth.helpers.js';
 import {
   formatRelativeTime,
   mapActivityType,
@@ -10,6 +13,18 @@ import {
   logActivity,
   getSchoolOrFail,
 } from '../utils/admin.helpers.js';
+import {
+  buildCsvFile,
+  buildExcelFile,
+  buildExportPayload,
+  exportMonthDate,
+} from '../utils/export.helpers.js';
+import {
+  sendEmail,
+  buildResponsableCredentialsEmail,
+  buildStudentCredentialsEmail,
+  isSmtpConfigured,
+} from '../utils/email.service.js';
 
 const MONTH_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
@@ -307,7 +322,7 @@ export async function getResponsables(req, res, next) {
 export async function createResponsable(req, res, next) {
   try {
     const schoolId = req.user.schoolId;
-    const { firstName, lastName, email, department, phone } = req.body;
+    const { firstName, lastName, email, department, phone, sendEmail: wantEmail = true } = req.body;
 
     if (!firstName || !lastName || !email || !department) {
       return res.status(400).json({ error: 'Prénom, nom, email et département sont obligatoires' });
@@ -320,7 +335,7 @@ export async function createResponsable(req, res, next) {
 
     if (!emailMatchesDomain(normalizedEmail, school.email_domain)) {
       return res.status(400).json({
-        error: `L'email doit se terminer par @${school.email_domain}`,
+        error: `L'email doit se terminer par ${allowedEmailDomainsLabel(school.email_domain)}`,
       });
     }
 
@@ -357,8 +372,38 @@ export async function createResponsable(req, res, next) {
       `${firstName.trim()} ${lastName.trim()} a été ajouté en tant que responsable`
     );
 
+    let emailSent = false;
+    let emailWarning = null;
+
+    if (wantEmail !== false) {
+      const mail = buildResponsableCredentialsEmail({
+        firstName: firstName.trim(),
+        email: normalizedEmail,
+        temporaryPassword: tempPassword,
+      });
+
+      try {
+        const result = await sendEmail({
+          to: normalizedEmail,
+          subject: mail.subject,
+          text: mail.text,
+        });
+        emailSent = result.sent;
+        if (!result.sent) {
+          emailWarning = isSmtpConfigured()
+            ? 'Échec d\'envoi email'
+            : 'SMTP non configuré : identifiants à transmettre manuellement (voir mot de passe temporaire)';
+        }
+      } catch (mailError) {
+        console.error('Erreur envoi email responsable:', mailError);
+        emailWarning = `Email non envoyé : ${mailError.message}`;
+      }
+    }
+
     return res.status(201).json({
-      message: 'Responsable créé avec succès',
+      message: emailSent
+        ? 'Responsable créé et identifiants envoyés par email'
+        : 'Responsable créé avec succès',
       responsable: {
         id: userId,
         email: normalizedEmail,
@@ -367,6 +412,87 @@ export async function createResponsable(req, res, next) {
         department: department.trim(),
       },
       temporaryPassword: tempPassword,
+      emailSent,
+      emailWarning,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /api/admin/responsables/:id/resend-credentials
+ * Régénère un mot de passe temporaire et (re)envoie les accès.
+ */
+export async function resendResponsableCredentials(req, res, next) {
+  try {
+    const schoolId = req.user.schoolId;
+    const { id } = req.params;
+
+    const rows = await query(
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.is_active
+       FROM users u
+       WHERE u.id = ? AND u.school_id = ? AND u.role = 'responsable'
+       LIMIT 1`,
+      [id, schoolId]
+    );
+
+    if (!rows[0]) return res.status(404).json({ error: 'Responsable introuvable' });
+    if (!rows[0].is_active) {
+      return res.status(400).json({ error: 'Ce responsable est désactivé. Réactivez-le avant de renvoyer les accès.' });
+    }
+
+    const tempPassword = generateTempPassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    await query(
+      `UPDATE users
+       SET password_hash = ?, must_change_password = 1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [passwordHash, id]
+    );
+
+    const mail = buildResponsableCredentialsEmail({
+      firstName: rows[0].first_name,
+      email: rows[0].email,
+      temporaryPassword: tempPassword,
+    });
+
+    let emailSent = false;
+    let emailWarning = null;
+
+    try {
+      const result = await sendEmail({
+        to: rows[0].email,
+        subject: mail.subject,
+        text: mail.text,
+      });
+      emailSent = result.sent;
+      if (!result.sent) {
+        emailWarning = isSmtpConfigured()
+          ? 'Échec d\'envoi email'
+          : 'SMTP non configuré : copiez le mot de passe temporaire ci-dessous';
+      }
+    } catch (mailError) {
+      console.error('Erreur renvoi email responsable:', mailError);
+      emailWarning = `Email non envoyé : ${mailError.message}`;
+    }
+
+    await logActivity(
+      schoolId,
+      req.user.id,
+      'responsable_credentials_resent',
+      `Identifiants renvoyés à ${rows[0].first_name} ${rows[0].last_name}`
+    );
+
+    return res.json({
+      message: emailSent
+        ? 'Identifiants renvoyés par email'
+        : 'Mot de passe régénéré (email non envoyé)',
+      email: rows[0].email,
+      temporaryPassword: tempPassword,
+      emailSent,
+      emailWarning,
     });
   } catch (error) {
     next(error);
@@ -394,7 +520,9 @@ export async function updateResponsable(req, res, next) {
     const normalizedEmail = email?.trim().toLowerCase();
 
     if (normalizedEmail && !emailMatchesDomain(normalizedEmail, school.email_domain)) {
-      return res.status(400).json({ error: `L'email doit se terminer par @${school.email_domain}` });
+      return res.status(400).json({
+        error: `L'email doit se terminer par ${allowedEmailDomainsLabel(school.email_domain)}`,
+      });
     }
 
     if (normalizedEmail && normalizedEmail !== rows[0].email) {
@@ -545,10 +673,19 @@ export async function getStudents(req, res, next) {
             WHERE sp.school_id = ? AND (sp.iban IS NULL OR sp.iban = '')) AS ibanManquants`,
         [schoolId, schoolId, schoolId, schoolId]
       ),
-      query(`SELECT DISTINCT major FROM student_profiles WHERE school_id = ? ORDER BY major`, [schoolId]),
+      query(
+        `SELECT name FROM filieres WHERE school_id = ? ORDER BY name`,
+        [schoolId]
+      ),
     ]);
 
     const colors = ['#7c3aed', '#d97706', '#2563eb', '#16a34a', '#dc2626', '#0891b2'];
+    const filiereNames = [
+      ...new Set([
+        ...filieresRows.map((f) => f.name),
+        ...studentsRows.map((s) => s.major).filter(Boolean),
+      ]),
+    ].sort((a, b) => a.localeCompare(b, 'fr'));
 
     return res.json({
       stats: {
@@ -557,7 +694,7 @@ export async function getStudents(req, res, next) {
         ibanValides: Number(statsRows[0]?.ibanValides || 0),
         ibanManquants: Number(statsRows[0]?.ibanManquants || 0),
       },
-      filieres: filieresRows.map((f) => f.major),
+      filieres: filiereNames,
       students: studentsRows.map((s, index) => ({
         id: s.id,
         initials: getInitials(s.first_name, s.last_name),
@@ -573,6 +710,156 @@ export async function getStudents(req, res, next) {
         statut: s.is_assistant ? 'assistant' : 'inscrit',
         dateInscription: new Date(s.created_at).toLocaleDateString('fr-FR'),
       })),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function inferStudyYear(major) {
+  const match = String(major || '').toUpperCase().match(/\b(L[123]|M[12])\b/);
+  return match?.[1] || 'L3';
+}
+
+/**
+ * POST /api/admin/students
+ * Inscription d'un étudiant par l'admin (mot de passe temporaire).
+ */
+export async function createStudent(req, res, next) {
+  try {
+    const schoolId = req.user.schoolId;
+    const {
+      firstName,
+      lastName,
+      email,
+      studentNumber,
+      major,
+      year,
+      sendEmail: wantEmail = true,
+    } = req.body;
+
+    if (!firstName || !lastName || !email || !studentNumber || !major) {
+      return res.status(400).json({
+        error: 'Prénom, nom, email, numéro étudiant et filière sont obligatoires',
+      });
+    }
+
+    const school = await getSchoolOrFail(schoolId);
+    if (!school) return res.status(404).json({ error: 'École introuvable' });
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const studentId = String(studentNumber).trim().replace(/^#/, '');
+    const majorName = major.trim();
+    const studyYear = validateStudyYear(year) ? year : inferStudyYear(majorName);
+
+    if (!emailMatchesDomain(normalizedEmail, school.email_domain)) {
+      return res.status(400).json({
+        error: `L'email doit se terminer par ${allowedEmailDomainsLabel(school.email_domain)}`,
+      });
+    }
+
+    const duplicates = await query(
+      `SELECT email FROM users WHERE email = ?
+       UNION
+       SELECT student_number AS email FROM student_profiles
+       WHERE school_id = ? AND student_number = ?`,
+      [normalizedEmail, schoolId, studentId]
+    );
+
+    if (duplicates.length > 0) {
+      return res.status(409).json({
+        error: 'Un compte existe déjà avec cet email ou ce numéro étudiant',
+      });
+    }
+
+    const filiereRows = await query(
+      `SELECT id FROM filieres WHERE school_id = ? AND name = ? LIMIT 1`,
+      [schoolId, majorName]
+    );
+    let filiereId = filiereRows[0]?.id || null;
+
+    if (!filiereId) {
+      const inserted = await query(
+        `INSERT INTO filieres (school_id, name) VALUES (?, ?)`,
+        [schoolId, majorName]
+      );
+      filiereId = inserted.insertId;
+    }
+
+    const tempPassword = generateTempPassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    const userId = await withTransaction(async (connection) => {
+      const [userResult] = await connection.execute(
+        `INSERT INTO users
+           (school_id, email, password_hash, role, first_name, last_name, must_change_password)
+         VALUES (?, ?, ?, 'etudiant', ?, ?, 1)`,
+        [schoolId, normalizedEmail, passwordHash, firstName.trim(), lastName.trim()]
+      );
+
+      const newUserId = userResult.insertId;
+
+      await connection.execute(
+        `INSERT INTO student_profiles
+           (user_id, school_id, student_number, filiere_id, major, study_year)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [newUserId, schoolId, studentId, filiereId, majorName, studyYear]
+      );
+
+      return newUserId;
+    });
+
+    await logActivity(
+      schoolId,
+      req.user.id,
+      'student_registered',
+      `${firstName.trim()} ${lastName.trim()} a été inscrit(e) par l'admin`
+    );
+
+    let emailSent = false;
+    let emailWarning = null;
+
+    if (wantEmail !== false) {
+      const mail = buildStudentCredentialsEmail({
+        firstName: firstName.trim(),
+        email: normalizedEmail,
+        temporaryPassword: tempPassword,
+      });
+
+      try {
+        const result = await sendEmail({
+          to: normalizedEmail,
+          subject: mail.subject,
+          text: mail.text,
+        });
+        emailSent = result.sent;
+        if (!result.sent) {
+          emailWarning = isSmtpConfigured()
+            ? 'Échec d\'envoi email'
+            : 'SMTP non configuré : transmettez le mot de passe temporaire manuellement';
+        }
+      } catch (mailError) {
+        console.error('Erreur envoi email étudiant:', mailError);
+        emailWarning = `Email non envoyé : ${mailError.message}`;
+      }
+    }
+
+    return res.status(201).json({
+      message: emailSent
+        ? 'Étudiant inscrit et identifiants envoyés par email'
+        : 'Étudiant inscrit avec succès',
+      student: {
+        id: userId,
+        email: normalizedEmail,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        studentNumber: studentId,
+        major: majorName,
+        studyYear,
+      },
+      temporaryPassword: tempPassword,
+      emailSent,
+      emailWarning,
     });
   } catch (error) {
     next(error);
@@ -819,6 +1106,54 @@ export async function updateSchoolSettings(req, res, next) {
 }
 
 /**
+ * POST /api/admin/school/logo
+ * Remplace le logo de l'école (PNG, JPG, SVG).
+ */
+export async function updateSchoolLogo(req, res, next) {
+  try {
+    const schoolId = req.user.schoolId;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Aucun fichier logo fourni' });
+    }
+
+    const school = await getSchoolOrFail(schoolId);
+    if (!school) {
+      return res.status(404).json({ error: 'École introuvable' });
+    }
+
+    const logoUrl = `/uploads/logos/${req.file.filename}`;
+
+    // Supprime l'ancien fichier local s'il existe
+    if (school.logo_url && school.logo_url.startsWith('/uploads/logos/')) {
+      const oldPath = path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../../',
+        school.logo_url.replace(/^\//, '')
+      );
+      if (fs.existsSync(oldPath)) {
+        try {
+          fs.unlinkSync(oldPath);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    await query(
+      `UPDATE schools SET logo_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [logoUrl, schoolId]
+    );
+
+    await logActivity(schoolId, req.user.id, 'school_logo_updated', 'Logo de l\'école mis à jour');
+
+    return res.json({ message: 'Logo mis à jour', logoUrl });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * POST /api/admin/school/filieres
  */
 export async function addFiliere(req, res, next) {
@@ -975,7 +1310,12 @@ export async function updateProfilePassword(req, res, next) {
 export async function getActivity(req, res, next) {
   try {
     const schoolId = req.user.schoolId;
-    const { search = '', type = 'all', limit = 50 } = req.query;
+    if (!schoolId) {
+      return res.status(403).json({ error: 'Compte admin sans école associée' });
+    }
+
+    const { search = '', type = 'all', limit = '50' } = req.query;
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
 
     let sql = `
       SELECT id, action, description, created_at
@@ -984,19 +1324,21 @@ export async function getActivity(req, res, next) {
     `;
     const params = [schoolId];
 
-    if (search.trim()) {
+    if (String(search).trim()) {
       sql += ` AND description LIKE ?`;
-      params.push(`%${search.trim()}%`);
+      params.push(`%${String(search).trim()}%`);
     }
 
-    if (type !== 'all') {
+    if (type && type !== 'all') {
       const typeMap = {
-        user: ['student_registered', 'responsable_created', 'user_created'],
-        success: ['hours_validated', 'application_accepted'],
+        user: ['student_registered', 'responsable_created', 'user_created', 'created_user'],
+        success: ['hours_validated', 'application_accepted', 'hours_declared'],
+        check: ['hours_validated', 'application_accepted'],
         warning: ['offer_created'],
-        alert: ['alert', 'iban_missing'],
-        system: ['export_generated', 'system'],
-        document: ['document_uploaded'],
+        offer: ['offer_created'],
+        alert: ['alert', 'iban_missing', 'session_cancelled_by_student'],
+        system: ['export_generated', 'system', 'student_profile_updated'],
+        document: ['document_uploaded', 'application_submitted'],
       };
 
       const actions = typeMap[type];
@@ -1006,8 +1348,8 @@ export async function getActivity(req, res, next) {
       }
     }
 
-    sql += ` ORDER BY created_at DESC LIMIT ?`;
-    params.push(Math.min(Number(limit) || 50, 100));
+    // LIMIT en littéral : certains MySQL/mysql2 refusent LIMIT ?
+    sql += ` ORDER BY created_at DESC LIMIT ${safeLimit}`;
 
     const rows = await query(sql, params);
 
@@ -1021,6 +1363,352 @@ export async function getActivity(req, res, next) {
         date: new Date(row.created_at).toLocaleDateString('fr-FR'),
         createdAt: row.created_at,
       })),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function adminNotifLink(type) {
+  if (type.includes('iban')) return '/admin/etudiants';
+  if (type.includes('hour') || type.includes('heures')) return '/admin/heures';
+  if (type.includes('responsable')) return '/admin/responsables';
+  if (type.includes('student') || type.includes('export')) return type.includes('export') ? '/admin/export' : '/admin/etudiants';
+  if (type.includes('offer')) return '/admin/responsables';
+  return '/admin/dashboard';
+}
+
+async function ensureAdminNotification(adminId, { type, title, message, relatedType = null, relatedId = null }) {
+  const existing = await query(
+    `SELECT id FROM notifications
+     WHERE user_id = ? AND type = ? AND title = ? AND is_read = 0
+     LIMIT 1`,
+    [adminId, type, title]
+  );
+  if (existing[0]) return;
+
+  await query(
+    `INSERT INTO notifications
+       (user_id, type, title, message, related_entity_type, related_entity_id)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [adminId, type, title, message, relatedType, relatedId]
+  );
+}
+
+async function syncAdminNotifications(adminId, schoolId) {
+  const [ibanRows, pendingRespRows, activityRows] = await Promise.all([
+    query(
+      `SELECT COUNT(*) AS total
+       FROM student_profiles sp
+       JOIN users u ON u.id = sp.user_id
+       WHERE sp.school_id = ? AND u.role = 'etudiant' AND u.is_active = 1
+         AND (sp.iban IS NULL OR sp.iban = '')`,
+      [schoolId]
+    ),
+    query(
+      `SELECT
+         u.id, u.first_name, u.last_name,
+         COALESCE(SUM(hr.duration_hours), 0) AS heures
+       FROM hour_records hr
+       JOIN users u ON u.id = hr.responsable_id
+       JOIN sessions s ON s.id = hr.session_id
+       JOIN offers o ON o.id = s.offer_id
+       WHERE o.school_id = ? AND hr.status = 'pending'
+       GROUP BY u.id, u.first_name, u.last_name
+       HAVING heures > 0
+       ORDER BY heures DESC
+       LIMIT 5`,
+      [schoolId]
+    ),
+    query(
+      `SELECT id, action, description, created_at
+       FROM activity_logs
+       WHERE school_id = ?
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [schoolId]
+    ),
+  ]);
+
+  const sansIban = Number(ibanRows[0]?.total || 0);
+  if (sansIban > 0) {
+    await ensureAdminNotification(adminId, {
+      type: 'iban_missing',
+      title: 'IBAN manquant',
+      message: `${sansIban} étudiant${sansIban > 1 ? 's' : ''} n'${sansIban > 1 ? 'ont' : 'a'} pas renseigné d'IBAN`,
+      relatedType: 'school',
+      relatedId: schoolId,
+    });
+  }
+
+  for (const resp of pendingRespRows) {
+    const heures = Number(resp.heures);
+    await ensureAdminNotification(adminId, {
+      type: 'hours_pending',
+      title: 'Heures en attente',
+      message: `${resp.first_name} ${resp.last_name} : ${heures}h à valider`,
+      relatedType: 'responsable',
+      relatedId: resp.id,
+    });
+  }
+
+  for (const row of activityRows) {
+    let title = 'Activité';
+    if (row.action.includes('student')) title = 'Nouvel étudiant';
+    else if (row.action.includes('responsable')) title = 'Responsable';
+    else if (row.action.includes('hour') || row.action.includes('hours')) title = 'Heures';
+    else if (row.action.includes('export')) title = 'Export paie';
+    else if (row.action.includes('offer')) title = 'Offre';
+    else if (row.action.includes('iban')) title = 'IBAN';
+
+    const existing = await query(
+      `SELECT id FROM notifications
+       WHERE user_id = ? AND type = ? AND related_entity_type = 'activity' AND related_entity_id = ?
+       LIMIT 1`,
+      [adminId, row.action, row.id]
+    );
+    if (existing[0]) continue;
+
+    await query(
+      `INSERT INTO notifications
+         (user_id, type, title, message, related_entity_type, related_entity_id, created_at)
+       VALUES (?, ?, ?, ?, 'activity', ?, ?)`,
+      [adminId, row.action, title, row.description, row.id, row.created_at]
+    );
+  }
+}
+
+/**
+ * GET /api/admin/notifications
+ * Notifications de l'école de l'admin connecté (pas de données d'une autre école).
+ */
+export async function getNotifications(req, res, next) {
+  try {
+    const adminId = req.user.id;
+    const schoolId = req.user.schoolId;
+    if (!schoolId) {
+      return res.status(403).json({ error: 'Compte admin sans école associée' });
+    }
+
+    await syncAdminNotifications(adminId, schoolId);
+
+    const rows = await query(
+      `SELECT id, type, title, message, is_read, created_at, related_entity_type, related_entity_id
+       FROM notifications
+       WHERE user_id = ?
+       ORDER BY is_read ASC, created_at DESC
+       LIMIT 20`,
+      [adminId]
+    );
+
+    return res.json({
+      notifications: rows.map((n) => ({
+        id: n.id,
+        title: n.title,
+        desc: n.message,
+        time: formatRelativeTime(n.created_at),
+        read: Boolean(n.is_read),
+        link: adminNotifLink(n.type),
+        type: n.type,
+      })),
+      unreadCount: rows.filter((n) => !n.is_read).length,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PATCH /api/admin/notifications/read-all
+ */
+export async function markNotificationsRead(req, res, next) {
+  try {
+    await query(
+      `UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0`,
+      [req.user.id]
+    );
+    return res.json({ message: 'Notifications marquées comme lues' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function parseExportPeriod(queryParams) {
+  const now = new Date();
+  const month = Number(queryParams.month) || now.getMonth() + 1;
+  const year = Number(queryParams.year) || now.getFullYear();
+
+  if (month < 1 || month > 12 || year < 2000 || year > 2100) {
+    return { error: 'Période invalide' };
+  }
+
+  return { month, year };
+}
+
+/**
+ * GET /api/admin/export/preview?month=&year=&rate=
+ * Aperçu paie + alertes pour le mois sélectionné.
+ */
+export async function getExportPreview(req, res, next) {
+  try {
+    const schoolId = req.user.schoolId;
+    const period = parseExportPeriod(req.query);
+    if (period.error) return res.status(400).json({ error: period.error });
+
+    const school = await getSchoolOrFail(schoolId);
+    if (!school) return res.status(404).json({ error: 'École introuvable' });
+
+    const rate = req.query.rate != null && req.query.rate !== ''
+      ? Number(req.query.rate)
+      : Number(school.hourly_rate || 12);
+
+    const payload = await buildExportPayload(schoolId, period.year, period.month, rate);
+
+    return res.json({
+      period: payload.period,
+      month: payload.month,
+      year: payload.year,
+      hourlyRate: payload.hourlyRate,
+      alerts: payload.alerts,
+      assistants: payload.assistants.map((a) => ({
+        nom: a.nom,
+        prenom: a.prenom,
+        idEtud: a.idEtud,
+        iban: a.ibanMasked,
+        ibanMissing: !a.iban,
+        heures: a.heures,
+        montant: a.montant,
+      })),
+      totals: payload.totals,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/admin/export/download?month=&year=&format=csv|excel&rate=
+ * Télécharge le fichier de paie (CSV ou Excel).
+ */
+export async function downloadExport(req, res, next) {
+  try {
+    const schoolId = req.user.schoolId;
+    const period = parseExportPeriod(req.query);
+    if (period.error) return res.status(400).json({ error: period.error });
+
+    const formatRaw = String(req.query.format || 'csv').toLowerCase();
+    const format = formatRaw === 'excel' || formatRaw === 'xlsx' || formatRaw === 'xls'
+      ? 'xlsx'
+      : 'csv';
+
+    const school = await getSchoolOrFail(schoolId);
+    if (!school) return res.status(404).json({ error: 'École introuvable' });
+
+    const rate = req.query.rate != null && req.query.rate !== ''
+      ? Number(req.query.rate)
+      : Number(school.hourly_rate || 12);
+
+    const payload = await buildExportPayload(schoolId, period.year, period.month, rate);
+    const monthKey = exportMonthDate(period.year, period.month);
+    const slug = `${period.year}-${String(period.month).padStart(2, '0')}`;
+
+    let body;
+    let contentType;
+    let filename;
+
+    if (format === 'xlsx') {
+      body = buildExcelFile(payload);
+      contentType = 'application/vnd.ms-excel; charset=utf-8';
+      filename = `export-paie-${slug}.xls`;
+    } else {
+      body = buildCsvFile(payload);
+      contentType = 'text/csv; charset=utf-8';
+      filename = `export-paie-${slug}.csv`;
+    }
+
+    // En BDD : ENUM('csv','xlsx') — le fichier téléchargé reste .csv ou .xls
+    const storedFormat = format === 'xlsx' ? 'xlsx' : 'csv';
+
+    await query(
+      `INSERT INTO monthly_exports
+         (school_id, export_month, format, total_hours, total_amount, assistant_count, exported_by, file_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         format = VALUES(format),
+         total_hours = VALUES(total_hours),
+         total_amount = VALUES(total_amount),
+         assistant_count = VALUES(assistant_count),
+         exported_by = VALUES(exported_by),
+         file_path = VALUES(file_path),
+         exported_at = CURRENT_TIMESTAMP`,
+      [
+        schoolId,
+        monthKey,
+        storedFormat,
+        payload.totals.heures,
+        payload.totals.montant,
+        payload.totals.assistants,
+        req.user.id,
+        filename,
+      ]
+    );
+
+    await logActivity(
+      schoolId,
+      req.user.id,
+      'export_generated',
+      `Export paie ${payload.period} (${storedFormat === 'xlsx' ? 'EXCEL' : 'CSV'}) — ${payload.totals.assistants} assistants, ${payload.totals.montant.toFixed(2)} €`
+    );
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+    );
+    // Empêche le navigateur de "deviner" un autre type
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.send(body);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/admin/export/history
+ * Historique des exports déjà générés.
+ */
+export async function getExportHistory(req, res, next) {
+  try {
+    const schoolId = req.user.schoolId;
+
+    const rows = await query(
+      `SELECT id, export_month, format, total_hours, total_amount, assistant_count, exported_at
+       FROM monthly_exports
+       WHERE school_id = ?
+       ORDER BY export_month DESC
+       LIMIT 24`,
+      [schoolId]
+    );
+
+    return res.json({
+      history: rows.map((row) => {
+        const d = new Date(row.export_month);
+        const month = d.getUTCMonth() + 1;
+        const year = d.getUTCFullYear();
+        return {
+          id: row.id,
+          month,
+          year,
+          label: getMonthLabel(month, year),
+          shortLabel: `${MONTH_LABELS[month - 1]} ${year}`,
+          format: row.format,
+          totalHours: Number(row.total_hours),
+          totalAmount: Number(row.total_amount),
+          assistantCount: Number(row.assistant_count),
+          exportedAt: row.exported_at,
+          dateLabel: `Exporté le ${new Date(row.exported_at).toLocaleDateString('fr-FR')}`,
+        };
+      }),
     });
   } catch (error) {
     next(error);

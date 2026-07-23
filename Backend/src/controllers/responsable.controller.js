@@ -1,4 +1,7 @@
 import bcrypt from 'bcryptjs';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { query } from '../config/db.js';
 import { validatePassword } from '../utils/auth.helpers.js';
 import {
@@ -7,6 +10,8 @@ import {
   getMonthLabel,
   logActivity,
 } from '../utils/admin.helpers.js';
+import { isPdfFile } from '../middleware/upload.middleware.js';
+import { sendEmail, buildApplicationDecisionEmail } from '../utils/email.service.js';
 
 const OFFER_COLORS = ['#7c3aed', '#2563eb', '#16a34a', '#d97706'];
 const ASSISTANT_COLORS = [
@@ -16,6 +21,12 @@ const ASSISTANT_COLORS = [
   { bg: '#ddd6fe', text: '#5b21b6' },
 ];
 
+function parseMinGrade(gradeRequise) {
+  if (gradeRequise == null || gradeRequise === '') return null;
+  const parsed = parseFloat(String(gradeRequise).replace(/[^\d.]/g, ''));
+  if (Number.isNaN(parsed) || parsed < 0 || parsed > 20) return null;
+  return parsed;
+}
 function mapOfferStatus(status) {
   return status === 'active' ? 'active' : 'pourvue';
 }
@@ -298,7 +309,7 @@ export async function createOffer(req, res, next) {
       return res.status(400).json({ error: 'Matière et description sont obligatoires' });
     }
 
-    const minGrade = grade_requise ? parseFloat(String(grade_requise).replace(/[^\d.]/g, '')) || null : null;
+    const minGrade = parseMinGrade(grade_requise);
 
     const result = await query(
       `INSERT INTO offers
@@ -339,7 +350,12 @@ export async function updateOffer(req, res, next) {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Offre introuvable' });
 
-    const minGrade = grade_requise ? parseFloat(String(grade_requise).replace(/[^\d.]/g, '')) || null : null;
+    // mysql2 refuse `undefined` → toujours passer `null`
+    const subjectVal = matiere != null ? String(matiere).trim() : null;
+    const descriptionVal = description != null ? String(description).trim() : null;
+    const placesVal = places != null && places !== '' ? Number(places) : null;
+    const levelVal = level != null && String(level).trim() !== '' ? String(level).trim() : null;
+    const minGradeVal = parseMinGrade(grade_requise);
 
     await query(
       `UPDATE offers SET
@@ -350,7 +366,7 @@ export async function updateOffer(req, res, next) {
          min_grade = COALESCE(?, min_grade),
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [matiere?.trim(), description?.trim(), places ? Number(places) : null, level?.trim(), minGrade, id]
+      [subjectVal, descriptionVal, placesVal, levelVal, minGradeVal, id]
     );
 
     return res.json({ message: 'Offre mise à jour' });
@@ -391,7 +407,7 @@ export async function getApplications(req, res, next) {
     const { status = '' } = req.query;
 
     let sql = `
-      SELECT a.id, a.motivation, a.grade_obtained, a.status, a.applied_at,
+      SELECT a.id, a.motivation, a.grade_obtained, a.status, a.applied_at, a.cv_url,
              o.subject AS matiere,
              u.first_name, u.last_name, u.email, u.phone
       FROM applications a
@@ -422,8 +438,57 @@ export async function getApplications(req, res, next) {
         date: formatRelativeTime(a.applied_at),
         email: a.email,
         telephone: a.phone,
+        hasCv: Boolean(a.cv_url),
+        cvUrl: a.cv_url || null,
       })),
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/responsable/applications/:id/cv
+ */
+export async function downloadApplicationCv(req, res, next) {
+  try {
+    const responsableId = req.user.id;
+    const { id } = req.params;
+
+    const rows = await query(
+      `SELECT a.cv_url, u.first_name, u.last_name
+       FROM applications a
+       JOIN offers o ON o.id = a.offer_id
+       JOIN users u ON u.id = a.student_id
+       WHERE a.id = ? AND o.responsable_id = ?
+       LIMIT 1`,
+      [id, responsableId]
+    );
+
+    if (!rows[0]?.cv_url) {
+      return res.status(404).json({ error: 'Aucun CV joint à cette candidature' });
+    }
+
+    const relative = String(rows[0].cv_url).replace(/^\/uploads\//, '');
+    const uploadsRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../uploads');
+    const absolute = path.resolve(uploadsRoot, relative);
+    const root = path.resolve(uploadsRoot);
+
+    if (!absolute.startsWith(root) || !fs.existsSync(absolute)) {
+      return res.status(404).json({ error: 'Fichier CV introuvable sur le serveur' });
+    }
+
+    if (!isPdfFile(absolute)) {
+      return res.status(422).json({
+        error: 'Le fichier joint n\'est pas un PDF valide. Demandez à l\'étudiant de candidater à nouveau avec un vrai PDF.',
+      });
+    }
+
+    const safeFirst = String(rows[0].first_name || 'etudiant').replace(/[^\w-]/g, '_');
+    const safeLast = String(rows[0].last_name || '').replace(/[^\w-]/g, '_');
+    const downloadName = `CV_${safeFirst}_${safeLast}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    return res.download(absolute, downloadName);
   } catch (error) {
     next(error);
   }
@@ -444,7 +509,7 @@ export async function reviewApplication(req, res, next) {
     }
 
     const rows = await query(
-      `SELECT a.id, a.student_id, o.subject, u.first_name, u.last_name
+      `SELECT a.id, a.student_id, o.subject, u.first_name, u.last_name, u.email
        FROM applications a
        JOIN offers o ON o.id = a.offer_id
        JOIN users u ON u.id = a.student_id
@@ -466,9 +531,53 @@ export async function reviewApplication(req, res, next) {
       `Candidature de ${rows[0].first_name} ${rows[0].last_name} (${rows[0].subject}) ${action === 'accept' ? 'acceptée' : 'refusée'}`
     );
 
+    const notifTitle = action === 'accept' ? 'Candidature acceptée' : 'Candidature refusée';
+    const notifMessage =
+      action === 'accept'
+        ? `Votre candidature pour '${rows[0].subject}' a été acceptée !`
+        : `Votre candidature pour '${rows[0].subject}' a été refusée.`;
+
+    await query(
+      `INSERT INTO notifications (user_id, type, title, message, related_entity_type, related_entity_id)
+       VALUES (?, ?, ?, ?, 'application', ?)`,
+      [
+        rows[0].student_id,
+        action === 'accept' ? 'application_accepted' : 'application_rejected',
+        notifTitle,
+        notifMessage,
+        rows[0].id,
+      ]
+    );
+
+    let emailSent = false;
+    let emailWarning = null;
+    if (rows[0].email) {
+      const mail = buildApplicationDecisionEmail({
+        firstName: rows[0].first_name,
+        offerSubject: rows[0].subject,
+        accepted: action === 'accept',
+      });
+      try {
+        const result = await sendEmail({
+          to: rows[0].email,
+          subject: mail.subject,
+          text: mail.text,
+        });
+        emailSent = result.sent;
+        if (!result.sent) {
+          emailWarning = 'Email non envoyé (SMTP non configuré ou échec)';
+        }
+      } catch (mailError) {
+        console.error('Erreur email décision candidature:', mailError);
+        emailWarning = mailError.message;
+      }
+    }
+
     return res.json({
       message: action === 'accept' ? 'Candidature acceptée' : 'Candidature refusée',
       status: mapApplicationStatus(newStatus),
+      emailSent,
+      emailWarning,
     });
   } catch (error) {
     next(error);
@@ -644,8 +753,9 @@ export async function assignSession(req, res, next) {
 export async function getHours(req, res, next) {
   try {
     const responsableId = req.user.id;
+    const schoolId = req.user.schoolId;
 
-    const [pendingRows, treatedRows, statsRows] = await Promise.all([
+    const [pendingRows, treatedRows, statsRows, adminRows] = await Promise.all([
       query(
         `SELECT hr.id, hr.duration_hours, hr.created_at, hr.status,
                 u.first_name, u.last_name, o.subject
@@ -680,6 +790,12 @@ export async function getHours(req, res, next) {
            AND YEAR(created_at) = YEAR(CURDATE()) AND MONTH(created_at) = MONTH(CURDATE())`,
         [responsableId]
       ),
+      query(
+        `SELECT email, first_name, last_name FROM users
+         WHERE school_id = ? AND role = 'admin' AND is_active = 1
+         ORDER BY id ASC LIMIT 1`,
+        [schoolId]
+      ),
     ]);
 
     const formatHours = (h) => {
@@ -688,7 +804,11 @@ export async function getHours(req, res, next) {
       return `${String(hours).padStart(2, '0')}h ${String(mins).padStart(2, '0')}`;
     };
 
+    const admin = adminRows[0];
+
     return res.json({
+      adminEmail: admin?.email || null,
+      adminName: admin ? `${admin.first_name || ''} ${admin.last_name || ''}`.trim() : null,
       stats: {
         totalMensuel: formatHours(Number(statsRows[0]?.total || 0)),
         valides: formatHours(Number(statsRows[0]?.valides || 0)),

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Download,
   Send,
@@ -14,17 +14,38 @@ import {
   Check,
   X,
 } from 'lucide-react';
+import { useOutletContext } from 'react-router-dom';
 import { getResponsableHours, reviewResponsableHour } from '../../services/api';
 import './responsable.css';
 
 const ResponsableHeures = () => {
+  const { searchTerm = '' } = useOutletContext() || {};
   const [heuresAttente, setHeuresAttente] = useState([]);
   const [heuresTraitees, setHeuresTraitees] = useState([]);
   const [stats, setStats] = useState({ totalMensuel: '00h 00', valides: '00h 00', attente: '00h 00', refusees: '00h 00' });
+  const [adminEmail, setAdminEmail] = useState(null);
+  const [adminName, setAdminName] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
   const [selectedHeures, setSelectedHeures] = useState([]);
+
+  const q = searchTerm.trim().toLowerCase();
+  const filteredAttente = useMemo(() => {
+    if (!q) return heuresAttente;
+    return heuresAttente.filter((h) =>
+      (h.name || '').toLowerCase().includes(q) ||
+      (h.comment || '').toLowerCase().includes(q)
+    );
+  }, [heuresAttente, q]);
+
+  const filteredTraitees = useMemo(() => {
+    if (!q) return heuresTraitees;
+    return heuresTraitees.filter((h) =>
+      (h.name || '').toLowerCase().includes(q) ||
+      (h.subject || '').toLowerCase().includes(q)
+    );
+  }, [heuresTraitees, q]);
 
   const loadHours = useCallback(async () => {
     setLoading(true);
@@ -34,6 +55,8 @@ const ResponsableHeures = () => {
       setHeuresAttente(data.heuresAttente || []);
       setHeuresTraitees(data.heuresTraitees || []);
       setStats(data.stats || { totalMensuel: '00h 00', valides: '00h 00', attente: '00h 00', refusees: '00h 00' });
+      setAdminEmail(data.adminEmail || null);
+      setAdminName(data.adminName || null);
       setSelectedHeures([]);
     } catch (err) {
       setError(err.message);
@@ -59,10 +82,10 @@ const ResponsableHeures = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedHeures.length === heuresAttente.length) {
+    if (selectedHeures.length === filteredAttente.length) {
       setSelectedHeures([]);
     } else {
-      setSelectedHeures(heuresAttente.map((h) => h.id));
+      setSelectedHeures(filteredAttente.map((h) => h.id));
     }
   };
 
@@ -196,7 +219,7 @@ const ResponsableHeures = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '1rem 1.5rem', width: '40px' }}><input type="checkbox" onChange={toggleSelectAll} checked={heuresAttente.length > 0 && selectedHeures.length === heuresAttente.length} style={{ cursor: 'pointer' }} /></th>
+                  <th style={{ padding: '1rem 1.5rem', width: '40px' }}><input type="checkbox" onChange={toggleSelectAll} checked={filteredAttente.length > 0 && selectedHeures.length === filteredAttente.length} style={{ cursor: 'pointer' }} /></th>
                   <th style={{ padding: '1rem', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>Assistant</th>
                   <th style={{ padding: '1rem', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>Date</th>
                   <th style={{ padding: '1rem', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>Heures</th>
@@ -205,7 +228,7 @@ const ResponsableHeures = () => {
                 </tr>
               </thead>
               <tbody>
-                {heuresAttente.map((heure) => (
+                {filteredAttente.map((heure) => (
                   <tr key={heure.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '1.25rem 1.5rem' }}><input type="checkbox" onChange={() => toggleSelect(heure.id)} checked={selectedHeures.includes(heure.id)} style={{ cursor: 'pointer' }} /></td>
                     <td style={{ padding: '1.25rem 1rem' }}>
@@ -231,7 +254,7 @@ const ResponsableHeures = () => {
                     </td>
                   </tr>
                 ))}
-                {heuresAttente.length === 0 && (
+                {filteredAttente.length === 0 && (
                   <tr>
                     <td colSpan="6" style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Toutes les heures en attente ont été traitées.</td>
                   </tr>
@@ -248,10 +271,12 @@ const ResponsableHeures = () => {
             </div>
 
             <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {heuresTraitees.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#64748b', padding: '1rem' }}>Aucune heure traitée pour le moment.</div>
+              {filteredTraitees.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#64748b', padding: '1rem' }}>
+                  {q ? 'Aucun résultat pour la recherche.' : 'Aucune heure traitée pour le moment.'}
+                </div>
               ) : (
-                heuresTraitees.map((item) => (
+                filteredTraitees.map((item) => (
                   <div key={item.id} style={{ backgroundColor: 'white', border: `1px solid ${item.type === 'success' ? '#e2e8f0' : '#fee2e2'}`, borderRadius: '8px', padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                       <div style={{ backgroundColor: item.type === 'success' ? '#ecfdf5' : '#fef2f2', color: item.type === 'success' ? '#10b981' : '#ef4444', width: '40px', height: '40px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -292,7 +317,20 @@ const ResponsableHeures = () => {
               Les assistants suivants ont des séances annulées ce mois-ci. Aucune heure ne doit être validée pour ces créneaux.
             </p>
 
-            <button onClick={() => window.location.href = "mailto:admin@ecole.fr?subject=Problème avec les heures annulées"} style={{ width: '100%', backgroundColor: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', padding: '0.8rem', borderRadius: '8px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', transition: 'background 0.2s', position: 'relative', zIndex: 1 }}>
+            <button
+              onClick={() => {
+                if (!adminEmail) {
+                  alert("Aucun email d'administration trouvé pour votre école.");
+                  return;
+                }
+                const subject = encodeURIComponent('Problème avec les heures annulées');
+                const body = encodeURIComponent(
+                  `Bonjour${adminName ? ` ${adminName}` : ''},\n\nJe souhaite vous signaler un problème concernant des séances annulées / heures à ne pas valider.\n\nCordialement`
+                );
+                window.location.href = `mailto:${adminEmail}?subject=${subject}&body=${body}`;
+              }}
+              style={{ width: '100%', backgroundColor: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', padding: '0.8rem', borderRadius: '8px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', transition: 'background 0.2s', position: 'relative', zIndex: 1 }}
+            >
               <Mail size={18} />
               Contacter l'administration
             </button>

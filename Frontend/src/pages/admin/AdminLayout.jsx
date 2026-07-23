@@ -6,7 +6,7 @@ import {
   PlusCircle, HelpCircle, LogOut, Search,
   Bell, Menu, X
 } from 'lucide-react';
-import { clearAuth } from '../../services/api';
+import { clearAuth, getStoredUser, getAdminNotifications, markAdminNotificationsRead } from '../../services/api';
 import './admin.css';
 
 const sidebarLinks = [
@@ -24,9 +24,31 @@ const AdminLayout = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const notifRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const storedUser = getStoredUser();
+  const adminName = [storedUser?.firstName, storedUser?.lastName].filter(Boolean).join(' ') || 'Admin';
+  const adminAvatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(adminName)}&background=0f0535&color=fff&size=100`;
+
+  const loadNotifications = () => {
+    getAdminNotifications()
+      .then((data) => {
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+      })
+      .catch(() => {
+        setNotifications([]);
+        setUnreadCount(0);
+      });
+  };
+
+  useEffect(() => {
+    loadNotifications();
+    setSearchTerm('');
+  }, [location.pathname]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -38,15 +60,19 @@ const AdminLayout = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const notifications = [
-    { id: 1, title: 'Nouvelles heures déclarées', desc: 'Léa Martin a déclaré 12h', time: 'Il y a 5 min', link: '/admin/heures' },
-    { id: 2, title: 'Nouveau contrat IBAN', desc: 'Thomas Dubois a déposé son IBAN', time: 'Il y a 2h', link: '/admin/etudiants' },
-    { id: 3, title: 'Rappel responsable', desc: 'Mme Durand a 24h en attente', time: 'Hier', link: '/admin/responsables' },
-  ];
-
   const handleNotificationClick = (link) => {
     navigate(link);
     setShowNotifications(false);
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markAdminNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch {
+      // ignore
+    }
   };
 
   const getPageTitle = () => {
@@ -64,9 +90,11 @@ const AdminLayout = () => {
     const path = location.pathname;
     if (path.includes('responsables')) return 'Rechercher un responsable...';
     if (path.includes('etudiants')) return 'Rechercher un étudiant...';
-    if (path.includes('export')) return 'Search exports...';
-    if (path.includes('parametres')) return 'Rechercher un paramètre...';
-    return 'Search data...';
+    if (path.includes('heures')) return 'Rechercher un assistant ou responsable...';
+    if (path.includes('export')) return 'Rechercher dans l\'historique...';
+    if (path.includes('activity') || path.includes('activite')) return 'Rechercher une action...';
+    if (path.includes('parametres')) return 'Rechercher une filière...';
+    return 'Rechercher...';
   };
 
   return (
@@ -145,7 +173,7 @@ const AdminLayout = () => {
           <div className="admin-header-right" style={{ position: 'relative' }} ref={notifRef}>
             <button className="header-icon-btn" onClick={() => setShowNotifications(!showNotifications)}>
               <Bell size={18} />
-              <span className="notif-badge" />
+              {unreadCount > 0 && <span className="notif-badge" />}
             </button>
             
             {showNotifications && (
@@ -157,24 +185,43 @@ const AdminLayout = () => {
               }}>
                 <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)', fontWeight: 600, color: 'var(--primary-dark)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   Notifications
-                  <span style={{ background: 'var(--primary-color)', color: 'white', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '10px' }}>3</span>
+                  {unreadCount > 0 && (
+                    <span style={{ background: 'var(--primary-color)', color: 'white', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '10px' }}>{unreadCount}</span>
+                  )}
                 </div>
-                <div>
-                  {notifications.map(notif => (
-                    <div 
-                      key={notif.id}
-                      onClick={() => handleNotificationClick(notif.link)}
-                      style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '4px' }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                    >
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--primary-dark)' }}>{notif.title}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-color)' }}>{notif.desc}</div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{notif.time}</div>
+                <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                  {notifications.length === 0 ? (
+                    <div style={{ padding: '1.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                      Aucune notification pour votre école.
                     </div>
-                  ))}
+                  ) : (
+                    notifications.map((notif) => (
+                      <div 
+                        key={notif.id}
+                        onClick={() => handleNotificationClick(notif.link)}
+                        style={{
+                          padding: '1rem',
+                          borderBottom: '1px solid var(--border-color)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          background: notif.read ? 'white' : '#f8fafc',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = notif.read ? 'white' : '#f8fafc'; }}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--primary-dark)' }}>{notif.title}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-color)' }}>{notif.desc}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{notif.time}</div>
+                      </div>
+                    ))
+                  )}
                 </div>
-                <div style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--primary-color)', cursor: 'pointer', fontWeight: 500 }} onClick={() => setShowNotifications(false)}>
+                <div
+                  style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--primary-color)', cursor: 'pointer', fontWeight: 500 }}
+                  onClick={handleMarkAllRead}
+                >
                   Marquer tout comme lu
                 </div>
               </div>
@@ -195,12 +242,12 @@ const AdminLayout = () => {
               title="Mon Profil"
             >
               <div className="admin-user-details">
-                <div className="admin-user-name">Admin ESCP</div>
+                <div className="admin-user-name">{adminName}</div>
                 <div className="admin-user-role">Gestionnaire</div>
               </div>
               <img
-                src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&q=80"
-                alt="Admin"
+                src={adminAvatarUrl}
+                alt={adminName}
                 className="admin-avatar"
               />
             </div>
@@ -209,7 +256,7 @@ const AdminLayout = () => {
 
         {/* Page Content */}
         <main className="admin-page">
-          <Outlet context={{ searchTerm }} />
+          <Outlet context={{ searchTerm, setSearchTerm }} />
         </main>
       </div>
 

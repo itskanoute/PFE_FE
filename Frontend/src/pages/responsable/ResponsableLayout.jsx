@@ -12,9 +12,10 @@ import {
   HelpCircle,
   AlertCircle,
   Menu,
-  X
+  X,
+  LogOut
 } from 'lucide-react';
-import { getResponsableSummary } from '../../services/api';
+import { getResponsableSummary, clearAuth } from '../../services/api';
 import './responsable.css';
 
 const ResponsableLayout = () => {
@@ -22,6 +23,7 @@ const ResponsableLayout = () => {
   const location = useLocation();
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [badges, setBadges] = useState({ candidatures: 0, heuresLabel: null });
   const [notifications, setNotifications] = useState([]);
@@ -42,9 +44,12 @@ const ResponsableLayout = () => {
 
   useEffect(() => {
     loadSummary();
+    setSearchTerm('');
   }, [loadSummary, location.pathname]);
 
   const unreadCount = notifications.filter((n) => n.unread).length;
+  const avatarName = profile.fullName || profile.name || 'R';
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(avatarName)}&background=0f172a&color=fff&size=100`;
 
   return (
     <div className="resp-layout">
@@ -117,10 +122,32 @@ const ResponsableLayout = () => {
             <User className="resp-nav-icon" />
             <span>Profil</span>
           </NavLink>
+
+          <button
+            type="button"
+            className="resp-nav-item"
+            onClick={() => {
+              clearAuth();
+              setIsMobileMenuOpen(false);
+              navigate('/login');
+            }}
+            style={{
+              width: '100%',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              textAlign: 'left',
+              color: 'var(--resp-danger, #ef4444)',
+              marginTop: '0.5rem',
+            }}
+          >
+            <LogOut className="resp-nav-icon" />
+            <span>Déconnexion</span>
+          </button>
         </nav>
 
         <div className="resp-sidebar-footer">
-          Espace Étudiant
+          Espace Responsable
         </div>
       </aside>
 
@@ -128,7 +155,12 @@ const ResponsableLayout = () => {
         <header className="resp-header">
           <div className="resp-search">
             <Search className="resp-search-icon" size={18} />
-            <input type="text" placeholder="Rechercher un étudiant, une séance..." />
+            <input
+              type="text"
+              placeholder="Rechercher un étudiant, une séance..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
 
           <div className="resp-header-actions">
@@ -229,8 +261,8 @@ const ResponsableLayout = () => {
                 <div className="resp-user-role">{profile.role}</div>
               </div>
               <img
-                src="https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&q=80"
-                alt="Profile"
+                src={avatarUrl}
+                alt={profile.name}
                 className="resp-avatar"
               />
             </div>
@@ -238,7 +270,7 @@ const ResponsableLayout = () => {
         </header>
 
         <main className="resp-page">
-          <Outlet context={{ refreshSummary: loadSummary }} />
+          <Outlet context={{ refreshSummary: loadSummary, searchTerm, setSearchTerm }} />
         </main>
       </div>
     </div>

@@ -40,6 +40,64 @@ const AdminEtudiantDetail = () => {
 
   const totalAnnuel = historiqueHeures.reduce((sum, h) => sum + h.valide, 0);
 
+  const openMail = (subject, body) => {
+    if (!etudiant?.email) {
+      alert("Aucun email trouvé pour cet étudiant.");
+      return;
+    }
+    window.location.href = `mailto:${etudiant.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
+  const handleContact = () => {
+    openMail(
+      `EduManage — Contact (${etudiant.prenom} ${etudiant.nom})`,
+      `Bonjour ${etudiant.prenom},\n\n\n\nCordialement,\nL'administration`
+    );
+  };
+
+  const handleRelanceIban = () => {
+    openMail(
+      'Rappel — IBAN manquant sur EduManage',
+      `Bonjour ${etudiant.prenom},\n\nVotre dossier administrateur indique que votre IBAN n'est pas encore renseigné.\nMerci de le compléter dans votre profil EduManage afin de permettre le versement de vos heures.\n\nCordialement,\nL'administration`
+    );
+  };
+
+  const handleExportDossier = () => {
+    const lines = [
+      'Dossier étudiant EduManage',
+      '',
+      `Nom;${etudiant.nom || ''}`,
+      `Prénom;${etudiant.prenom || ''}`,
+      `Email;${etudiant.email || ''}`,
+      `Téléphone;${etudiant.telephone || ''}`,
+      `Identifiant;${etudiant.identifiant || ''}`,
+      `Filière;${etudiant.filiere || ''}`,
+      `Statut;${etudiant.statut === 'assistant' ? 'Assistant' : 'Inscrit'}`,
+      `Inscrit le;${etudiant.dateInscription || ''}`,
+      `IBAN;${etudiant.ibanOk ? (etudiant.iban || 'Renseigné') : 'Manquant'}`,
+      `BIC;${etudiant.bic || ''}`,
+      `Titulaire;${etudiant.accountHolder || ''}`,
+      '',
+      'Historique des heures',
+      'Période;Déclarées;Validées;Statut paiement',
+      ...historiqueHeures.map((h) =>
+        [h.mois, `${h.total}h`, `${h.valide}h`, h.statut].join(';')
+      ),
+      '',
+      `Total annuel validé;${totalAnnuel}h`,
+    ];
+
+    const blob = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dossier-${etudiant.identifiant || etudiant.id || 'etudiant'}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <div className="page-header" style={{ marginBottom: '2rem' }}>
@@ -76,10 +134,10 @@ const AdminEtudiantDetail = () => {
             </div>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button className="btn-action outline">
+            <button type="button" className="btn-action outline" onClick={handleContact}>
               <Mail size={16} /> Contacter
             </button>
-            <button className="btn-action primary">
+            <button type="button" className="btn-action primary" onClick={handleExportDossier}>
               <Download size={16} /> Exporter le dossier
             </button>
           </div>
@@ -201,7 +259,12 @@ const AdminEtudiantDetail = () => {
             </div>
 
             {!etudiant.ibanOk && (
-              <button className="btn-action outline" style={{ width: '100%', marginTop: '1rem', justifyContent: 'center', color: '#dc2626', borderColor: '#fca5a5' }}>
+              <button
+                type="button"
+                className="btn-action outline"
+                onClick={handleRelanceIban}
+                style={{ width: '100%', marginTop: '1rem', justifyContent: 'center', color: '#dc2626', borderColor: '#fca5a5' }}
+              >
                 <Mail size={14} /> Relancer pour l'IBAN
               </button>
             )}

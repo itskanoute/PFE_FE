@@ -13,6 +13,7 @@ import {
   X,
   Search,
 } from 'lucide-react';
+import { useOutletContext } from 'react-router-dom';
 import {
   getResponsableSessions,
   createResponsableSession,
@@ -21,6 +22,7 @@ import {
 import './responsable.css';
 
 const ResponsableSeances = () => {
+  const { searchTerm: headerSearch = '' } = useOutletContext() || {};
   const [seances, setSeances] = useState([]);
   const [availableAssistants, setAvailableAssistants] = useState([]);
   const [historiqueParMois, setHistoriqueParMois] = useState([]);
@@ -94,9 +96,16 @@ const ResponsableSeances = () => {
     }
   };
 
-  const urgences = seances.filter((s) => s.status === 'annulee');
-  const sansAssistant = seances.filter((s) => s.status === 'sans_assistant');
-  const avecAssistant = seances.filter((s) => s.status === 'avec_assistant');
+  const headerQ = headerSearch.trim().toLowerCase();
+  const matchHeader = (s) =>
+    !headerQ
+    || (s.matiere || '').toLowerCase().includes(headerQ)
+    || (s.assistant || '').toLowerCase().includes(headerQ)
+    || (s.room || s.salle || '').toLowerCase().includes(headerQ);
+
+  const urgences = seances.filter((s) => s.status === 'annulee' && matchHeader(s));
+  const sansAssistant = seances.filter((s) => s.status === 'sans_assistant' && matchHeader(s));
+  const avecAssistant = seances.filter((s) => s.status === 'avec_assistant' && matchHeader(s));
 
   const filteredAssistants = availableAssistants.filter((a) =>
     a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -6,6 +6,7 @@ import {
   splitFullName,
   normalizeEmailDomain,
   emailMatchesDomain,
+  allowedEmailDomainsLabel,
   validatePassword,
   validateStudyYear,
   buildAuthResponse,
@@ -206,7 +207,7 @@ export async function registerSchool(req, res, next) {
 
     if (!emailMatchesDomain(adminEmail, domain)) {
       return res.status(400).json({
-        error: `L'email administrateur doit se terminer par @${domain}`,
+        error: `L'email administrateur doit se terminer par ${allowedEmailDomainsLabel(domain)}`,
       });
     }
 
@@ -346,7 +347,7 @@ export async function registerStudent(req, res, next) {
 
     if (!emailMatchesDomain(normalizedEmail, school.email_domain)) {
       return res.status(400).json({
-        error: `Vous devez utiliser votre email @${school.email_domain}`,
+        error: `Vous devez utiliser votre email ${allowedEmailDomainsLabel(school.email_domain)}`,
       });
     }
 

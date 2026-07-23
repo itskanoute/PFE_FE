@@ -3,7 +3,7 @@ import {
   Activity, UserPlus, CheckCircle2, Megaphone, RefreshCw,
   Clock, ShieldAlert, FileText, Filter, Search
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { getAdminActivity } from '../../services/api';
 
 const typeIcons = {
@@ -19,11 +19,18 @@ const typeIcons = {
 
 const AdminActivity = () => {
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState('');
+  const { searchTerm: headerSearch = '', setSearchTerm: setHeaderSearch } = useOutletContext() ?? {};
+  const [localSearch, setLocalSearch] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const searchTerm = headerSearch || localSearch;
+  const setSearchTerm = (value) => {
+    setLocalSearch(value);
+    setHeaderSearch?.(value);
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {

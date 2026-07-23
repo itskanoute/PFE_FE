@@ -1,57 +1,211 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Clock, CheckCircle, XCircle, Hourglass, Plus, Eye, Download, ChevronLeft, ChevronRight, Calendar, X } from 'lucide-react';
+import { useOutletContext } from 'react-router-dom';
+import { getEtudiantHeures, getEtudiantHeuresDeclarables, declareEtudiantHeures } from '../../services/api';
 
 const EtudiantHeures = () => {
-  const months = ["Septembre 2026", "Octobre 2026", "Novembre 2026"];
-  const [currentMonthIndex, setCurrentMonthIndex] = useState(1);
+  const { searchTerm = '' } = useOutletContext() || {};
+  const [months, setMonths] = useState([]);
+  const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
+  const [heures, setHeures] = useState([]);
+  const [stats, setStats] = useState({ total: 0, validees: 0, en_attente: 0, refusees: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const [heuresData, setHeuresData] = useState({
-    0: [
-      { id: 6, date: '10 Sep 2026', matiere: 'Mathématiques', horaire: '08:00 - 10:00', duree: '2h 00m', statut: 'validee' }
-    ],
-    1: [
-      { id: 1, date: '12 Oct 2026', matiere: 'Marketing Digital Avancé', horaire: '09:00 - 11:00', duree: '2h 00m', statut: 'validee' },
-      { id: 2, date: '15 Oct 2026', matiere: 'Économie de Marché', horaire: '14:00 - 17:00', duree: '3h 00m', statut: 'validee' },
-      { id: 3, date: '18 Oct 2026', matiere: "Management d'Équipe", horaire: '10:00 - 12:00', duree: '2h 00m', statut: 'en_attente' },
-      { id: 4, date: '20 Oct 2026', matiere: 'Communication Interne', motif: 'Absent', horaire: '08:30 - 10:30', duree: '2h 00m', statut: 'refusee' },
-      { id: 5, date: '24 Oct 2026', matiere: 'Analyse Financière', horaire: '13:30 - 16:30', duree: '3h 00m', statut: 'validee' },
-      { id: 7, date: '26 Oct 2026', matiere: 'Comptabilité', horaire: '08:00 - 10:00', duree: '2h 00m', statut: 'en_attente' },
-      { id: 8, date: '28 Oct 2026', matiere: 'Droit du Travail', horaire: '10:00 - 12:00', duree: '2h 00m', statut: 'validee' },
-    ],
-    2: []
-  });
-
-  const heures = heuresData[currentMonthIndex];
-
-  // Stats calculation
-  const calcHours = (arr) => arr.reduce((acc, h) => acc + parseInt(h.duree.charAt(0)), 0);
-  const totalHeures = calcHours(heures);
-  const validees = calcHours(heures.filter(h => h.statut === 'validee'));
-  const enAttente = calcHours(heures.filter(h => h.statut === 'en_attente'));
-  const refusees = calcHours(heures.filter(h => h.statut === 'refusee'));
-
-  // Modals state
   const [isDeclareModalOpen, setIsDeclareModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedHeure, setSelectedHeure] = useState(null);
+  const [declarables, setDeclarables] = useState([]);
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [declareError, setDeclareError] = useState('');
+  const [declaring, setDeclaring] = useState(false);
 
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
-  const totalPages = Math.ceil(heures.length / itemsPerPage);
-  
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
 
-  const displayedHeures = heures.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const loadHeures = (monthValue) => {
+    setLoading(true);
+    setError('');
+    getEtudiantHeures(monthValue ? { month: monthValue } : {})
+      .then((data) => {
+        const monthList = data.months || [];
+        setMonths(monthList);
 
-  const handlePrevMonth = () => { if (currentMonthIndex > 0) { setCurrentMonthIndex(currentMonthIndex - 1); setCurrentPage(1); } };
-  const handleNextMonth = () => { if (currentMonthIndex < months.length - 1) { setCurrentMonthIndex(currentMonthIndex + 1); setCurrentPage(1); } };
+        // First load without month: pick latest month and refetch filtered
+        if (!monthValue && monthList.length > 0) {
+          setCurrentMonthIndex(0);
+          return getEtudiantHeures({ month: monthList[0].value }).then((filtered) => {
+            setHeures(filtered.heures || []);
+            setStats(filtered.stats || { total: 0, validees: 0, en_attente: 0, refusees: 0 });
+            if (filtered.months?.length) setMonths(filtered.months);
+          });
+        }
 
-  const handleDeclareSubmit = (e) => {
-    e.preventDefault();
-    alert("Vos heures ont été déclarées avec succès et sont en attente de validation.");
-    setIsDeclareModalOpen(false);
+        setHeures(data.heures || []);
+        setStats(data.stats || { total: 0, validees: 0, en_attente: 0, refusees: 0 });
+        if (monthValue && monthList.length > 0) {
+          const idx = monthList.findIndex((m) => m.value === monthValue);
+          setCurrentMonthIndex(idx >= 0 ? idx : 0);
+        }
+      })
+      .catch((err) => setError(err.message || 'Erreur de chargement'))
+      .finally(() => setLoading(false));
   };
+
+  useEffect(() => {
+    loadHeures();
+  }, []);
+
+  const openDeclareModal = () => {
+    setDeclareError('');
+    setSelectedSessionId('');
+    setIsDeclareModalOpen(true);
+    getEtudiantHeuresDeclarables()
+      .then((data) => setDeclarables(data.seances || []))
+      .catch((err) => setDeclareError(err.message || 'Impossible de charger les séances'));
+  };
+
+  const selectedDeclarable = declarables.find((s) => String(s.sessionId) === String(selectedSessionId));
+
+  const handleDeclareSubmit = async (e) => {
+    e.preventDefault();
+    setDeclareError('');
+    if (!selectedSessionId) {
+      setDeclareError('Sélectionnez une séance');
+      return;
+    }
+    setDeclaring(true);
+    try {
+      await declareEtudiantHeures({ sessionId: Number(selectedSessionId) });
+      setIsDeclareModalOpen(false);
+      loadHeures();
+      alert('Vos heures ont été déclarées et sont en attente de validation.');
+    } catch (err) {
+      setDeclareError(err.message || 'Erreur lors de la déclaration');
+    } finally {
+      setDeclaring(false);
+    }
+  };
+
+  const formatStatNumber = (n) => {
+    const num = Number(n) || 0;
+    return Number.isInteger(num) ? num : Math.round(num * 10) / 10;
+  };
+
+  const handleExportReleve = (format) => {
+    const chosen = format === 'csv' ? 'csv' : 'excel';
+    const monthLabel = months[currentMonthIndex]?.label || 'periode';
+    const slug = months[currentMonthIndex]?.value || 'export';
+    const statusLabel = (s) =>
+      ({ validee: 'Validée', en_attente: 'En attente', refusee: 'Refusée' }[s] || s || '');
+
+    const rows = heures.map((h) => ({
+      date: h.date || '',
+      horaire: h.horaire || '',
+      matiere: h.matiere || '',
+      duree: h.duree || `${h.durationHours || 0}h`,
+      statut: statusLabel(h.statut),
+    }));
+
+    let blob;
+    let filename;
+
+    if (chosen === 'csv') {
+      const lines = [
+        'Relevé des heures EduManage',
+        `Période : ${monthLabel}`,
+        '',
+        'Date;Horaire;Matière;Durée;Statut',
+        ...rows.map((r) => [r.date, r.horaire, r.matiere, r.duree, r.statut].join(';')),
+        '',
+        `Total validées;${formatStatNumber(stats.validees)}h`,
+        `En attente;${formatStatNumber(stats.en_attente)}h`,
+        `Refusées;${formatStatNumber(stats.refusees)}h`,
+      ];
+      blob = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
+      filename = `releve-heures-${slug}.csv`;
+    } else {
+      const escapeXml = (value) =>
+        String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      const cell = (value) => `<Cell><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`;
+      const rowsXml = [
+        `<Row>${cell('Relevé des heures EduManage')}</Row>`,
+        `<Row>${cell(`Période : ${monthLabel}`)}</Row>`,
+        '<Row></Row>',
+        `<Row>${['Date', 'Horaire', 'Matière', 'Durée', 'Statut'].map((h) => cell(h)).join('')}</Row>`,
+        ...rows.map(
+          (r) => `<Row>${[r.date, r.horaire, r.matiere, r.duree, r.statut].map((v) => cell(v)).join('')}</Row>`
+        ),
+        '<Row></Row>',
+        `<Row>${cell('Total validées')}${cell('')}${cell('')}${cell(`${formatStatNumber(stats.validees)}h`)}${cell('')}</Row>`,
+        `<Row>${cell('En attente')}${cell('')}${cell('')}${cell(`${formatStatNumber(stats.en_attente)}h`)}${cell('')}</Row>`,
+        `<Row>${cell('Refusées')}${cell('')}${cell('')}${cell(`${formatStatNumber(stats.refusees)}h`)}${cell('')}</Row>`,
+      ].join('');
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Worksheet ss:Name="Relevé heures">
+    <Table>${rowsXml}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+      blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+      filename = `releve-heures-${slug}.xls`;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrevMonth = () => {
+    if (currentMonthIndex > 0) {
+      const nextIdx = currentMonthIndex - 1;
+      setCurrentMonthIndex(nextIdx);
+      setCurrentPage(1);
+      loadHeures(months[nextIdx].value);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (currentMonthIndex < months.length - 1) {
+      const nextIdx = currentMonthIndex + 1;
+      setCurrentMonthIndex(nextIdx);
+      setCurrentPage(1);
+      loadHeures(months[nextIdx].value);
+    }
+  };
+
+  const handleSelectMonth = (idx) => {
+    setCurrentMonthIndex(idx);
+    setCurrentPage(1);
+    setIsMonthPickerOpen(false);
+    loadHeures(months[idx].value);
+  };
+
+  const q = searchTerm.trim().toLowerCase();
+  const filteredHeures = !q
+    ? heures
+    : heures.filter((h) =>
+      (h.matiere || '').toLowerCase().includes(q) ||
+      (h.horaire || '').toLowerCase().includes(q) ||
+      (h.date || '').toLowerCase().includes(q) ||
+      (h.statut || '').toLowerCase().includes(q)
+    );
+  const totalPages = Math.max(1, Math.ceil(filteredHeures.length / itemsPerPage));
+  const displayedHeures = filteredHeures.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const getStatusBadge = (statut) => {
     switch (statut) {
@@ -75,33 +229,29 @@ const EtudiantHeures = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.5rem 1rem', gap: '1.5rem', position: 'relative' }}>
-          <button onClick={handlePrevMonth} disabled={currentMonthIndex === 0} style={{ background: 'none', border: 'none', cursor: currentMonthIndex === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', opacity: currentMonthIndex === 0 ? 0.3 : 1 }}>
+          <button onClick={handlePrevMonth} disabled={currentMonthIndex === 0 || months.length === 0} style={{ background: 'none', border: 'none', cursor: currentMonthIndex === 0 || months.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', opacity: currentMonthIndex === 0 || months.length === 0 ? 0.3 : 1 }}>
             <ChevronLeft size={20} color="#64748b" />
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: '#0f172a', minWidth: '110px', justifyContent: 'center' }}>
-            {months[currentMonthIndex]}
+            {months[currentMonthIndex]?.label || (loading ? '…' : 'Aucun mois')}
           </div>
-          <button onClick={handleNextMonth} disabled={currentMonthIndex === months.length - 1} style={{ background: 'none', border: 'none', cursor: currentMonthIndex === months.length - 1 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', opacity: currentMonthIndex === months.length - 1 ? 0.3 : 1 }}>
+          <button onClick={handleNextMonth} disabled={currentMonthIndex >= months.length - 1 || months.length === 0} style={{ background: 'none', border: 'none', cursor: currentMonthIndex >= months.length - 1 || months.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', opacity: currentMonthIndex >= months.length - 1 || months.length === 0 ? 0.3 : 1 }}>
             <ChevronRight size={20} color="#64748b" />
           </button>
           <div style={{ width: '1px', height: '24px', backgroundColor: '#e2e8f0' }}></div>
-          <button 
+          <button
             onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
           >
             <Calendar size={20} color={isMonthPickerOpen ? "#3730a3" : "#0f172a"} />
           </button>
 
-          {isMonthPickerOpen && (
+          {isMonthPickerOpen && months.length > 0 && (
             <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '0.5rem', backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden', minWidth: '180px' }}>
               {months.map((m, idx) => (
                 <button
-                  key={idx}
-                  onClick={() => {
-                    setCurrentMonthIndex(idx);
-                    setCurrentPage(1);
-                    setIsMonthPickerOpen(false);
-                  }}
+                  key={m.value}
+                  onClick={() => handleSelectMonth(idx)}
                   style={{
                     width: '100%',
                     textAlign: 'left',
@@ -116,7 +266,7 @@ const EtudiantHeures = () => {
                   onMouseOver={(e) => { if (currentMonthIndex !== idx) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
                   onMouseOut={(e) => { if (currentMonthIndex !== idx) e.currentTarget.style.backgroundColor = 'white'; }}
                 >
-                  {m}
+                  {m.label}
                 </button>
               ))}
             </div>
@@ -124,9 +274,14 @@ const EtudiantHeures = () => {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {error && (
+        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '8px', fontSize: '0.9rem' }}>
+          {error}
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-        
+
         <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -135,7 +290,7 @@ const EtudiantHeures = () => {
             <span style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600 }}>Total du mois</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-            <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#1e1b4b', lineHeight: 1 }}>{totalHeures}</span>
+            <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#1e1b4b', lineHeight: 1 }}>{formatStatNumber(stats.total)}</span>
             <span style={{ fontSize: '1rem', color: '#64748b' }}>heures</span>
           </div>
         </div>
@@ -148,7 +303,7 @@ const EtudiantHeures = () => {
             <span style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600 }}>Validées</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-            <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#16a34a', lineHeight: 1 }}>{validees}</span>
+            <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#16a34a', lineHeight: 1 }}>{formatStatNumber(stats.validees)}</span>
             <span style={{ fontSize: '1rem', color: '#64748b' }}>heures</span>
           </div>
         </div>
@@ -161,7 +316,7 @@ const EtudiantHeures = () => {
             <span style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600 }}>En attente</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-            <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#d97706', lineHeight: 1 }}>{enAttente}</span>
+            <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#d97706', lineHeight: 1 }}>{formatStatNumber(stats.en_attente)}</span>
             <span style={{ fontSize: '1rem', color: '#64748b' }}>heures</span>
           </div>
         </div>
@@ -174,7 +329,7 @@ const EtudiantHeures = () => {
             <span style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600 }}>Refusées</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-            <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#dc2626', lineHeight: 1 }}>{refusees}</span>
+            <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#dc2626', lineHeight: 1 }}>{formatStatNumber(stats.refusees)}</span>
             <span style={{ fontSize: '1rem', color: '#64748b' }}>heures</span>
           </div>
         </div>
@@ -182,20 +337,19 @@ const EtudiantHeures = () => {
       </div>
 
       <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
-        
-        {/* Main Table */}
+
         <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
           <div style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9' }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Détails des séances</h2>
-            <button 
-              onClick={() => setIsDeclareModalOpen(true)}
+            <button
+              onClick={openDeclareModal}
               style={{ backgroundColor: '#1e1b4b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
             >
               <Plus size={16} />
               Déclarer des heures
             </button>
           </div>
-          
+
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
@@ -208,32 +362,38 @@ const EtudiantHeures = () => {
               </tr>
             </thead>
             <tbody>
-              {displayedHeures.map((h, idx) => (
-                <tr key={h.id} style={{ borderBottom: idx !== displayedHeures.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                  <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.9rem', color: '#0f172a', fontWeight: 600 }}>{h.date}</td>
-                  <td style={{ padding: '1.25rem 1.5rem' }}>
-                    <div style={{ fontSize: '0.9rem', color: '#0f172a' }}>{h.matiere}</div>
-                    {h.statut === 'refusee' && h.motif && (
-                      <div style={{ fontSize: '0.75rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
-                        <XCircle size={12} /> Motif : {h.motif}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.9rem', color: '#475569' }}>{h.horaire}</td>
-                  <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.9rem', color: '#475569' }}>{h.duree}</td>
-                  <td style={{ padding: '1.25rem 1.5rem' }}>
-                    {getStatusBadge(h.statut)}
-                  </td>
-                  <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
-                    <button 
-                      onClick={() => { setSelectedHeure(h); setIsDetailModalOpen(true); }}
-                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
-                    >
-                      <Eye size={20} />
-                    </button>
-                  </td>
+              {!loading && displayedHeures.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>Aucune heure pour ce mois</td>
                 </tr>
-              ))}
+              ) : (
+                displayedHeures.map((h, idx) => (
+                  <tr key={h.id} style={{ borderBottom: idx !== displayedHeures.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                    <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.9rem', color: '#0f172a', fontWeight: 600 }}>{h.date}</td>
+                    <td style={{ padding: '1.25rem 1.5rem' }}>
+                      <div style={{ fontSize: '0.9rem', color: '#0f172a' }}>{h.matiere}</div>
+                      {h.statut === 'refusee' && h.motif && (
+                        <div style={{ fontSize: '0.75rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
+                          <XCircle size={12} /> Motif : {h.motif}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.9rem', color: '#475569' }}>{h.horaire}</td>
+                    <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.9rem', color: '#475569' }}>{h.duree}</td>
+                    <td style={{ padding: '1.25rem 1.5rem' }}>
+                      {getStatusBadge(h.statut)}
+                    </td>
+                    <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
+                      <button
+                        onClick={() => { setSelectedHeure(h); setIsDetailModalOpen(true); }}
+                        style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                      >
+                        <Eye size={20} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
 
@@ -244,24 +404,24 @@ const EtudiantHeures = () => {
             </span>
             {totalPages > 1 && (
               <div style={{ display: 'flex', gap: '0.25rem' }}>
-                <button 
+                <button
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                   style={{ padding: '0.25rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '4px', background: 'white', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.5 : 1 }}
                 >
                   <ChevronLeft size={16} />
                 </button>
-                
+
                 {Array.from({ length: totalPages }).map((_, i) => (
-                  <button 
+                  <button
                     key={i}
                     onClick={() => setCurrentPage(i + 1)}
-                    style={{ 
-                      padding: '0.25rem 0.75rem', 
-                      border: currentPage === i + 1 ? 'none' : '1px solid #e2e8f0', 
-                      borderRadius: '4px', 
-                      background: currentPage === i + 1 ? '#1e1b4b' : 'white', 
-                      color: currentPage === i + 1 ? 'white' : '#0f172a', 
+                    style={{
+                      padding: '0.25rem 0.75rem',
+                      border: currentPage === i + 1 ? 'none' : '1px solid #e2e8f0',
+                      borderRadius: '4px',
+                      background: currentPage === i + 1 ? '#1e1b4b' : 'white',
+                      color: currentPage === i + 1 ? 'white' : '#0f172a',
                       fontWeight: 600,
                       cursor: 'pointer'
                     }}
@@ -270,7 +430,7 @@ const EtudiantHeures = () => {
                   </button>
                 ))}
 
-                <button 
+                <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                   style={{ padding: '0.25rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '4px', background: 'white', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.5 : 1 }}
@@ -282,38 +442,57 @@ const EtudiantHeures = () => {
           </div>
         </div>
 
-        {/* Right Columns */}
         <div style={{ width: '300px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          
+
           <div style={{ backgroundColor: '#1e1b4b', borderRadius: '12px', padding: '1.5rem', color: 'white' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 1rem 0' }}>Besoin d'aide ?</h3>
             <p style={{ fontSize: '0.9rem', color: '#c7d2fe', margin: '0 0 1.5rem 0', lineHeight: '1.5' }}>
               Si vous constatez une erreur dans vos heures ou si vous souhaitez contester un refus, contactez votre coordinateur pédagogique.
             </p>
-            <div 
-              onClick={() => alert("Le support EduManage a été notifié. Un coordinateur vous contactera sous peu.")}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fbbf24', fontWeight: 700, cursor: 'pointer' }}
+            <a
+              href={`mailto:support@edumanage.fr?subject=${encodeURIComponent('Aide — Mes heures EduManage')}&body=${encodeURIComponent('Bonjour,\n\nJe souhaite une aide concernant mes heures déclarées sur EduManage.\n\nCordialement')}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fbbf24', fontWeight: 700, cursor: 'pointer', textDecoration: 'none' }}
             >
               Contacter le support <ChevronRight size={16} />
-            </div>
+            </a>
           </div>
 
-          <div 
-            onClick={() => { alert("Génération du relevé PDF en cours..."); setTimeout(() => alert("Le PDF a été téléchargé avec succès !"), 1500); }}
-            style={{ backgroundColor: '#f1f5f9', border: '1px dashed #cbd5e1', borderRadius: '12px', padding: '2rem 1.5rem', textAlign: 'center', cursor: 'pointer' }}
+          <div
+            style={{ backgroundColor: '#f1f5f9', border: '1px dashed #cbd5e1', borderRadius: '12px', padding: '2rem 1.5rem', textAlign: 'center' }}
           >
             <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
               <Download size={20} color="#1e1b4b" />
             </div>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', margin: '0 0 0.5rem 0' }}>Exporter le relevé</h3>
-            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Téléchargez un PDF récapitulatif pour vos dossiers personnels.</p>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', margin: '0 0 1rem 0' }}>Exporter le relevé</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => handleExportReleve('csv')}
+                style={{
+                  width: '100%', padding: '0.65rem 1rem', borderRadius: '8px',
+                  border: '1px solid #cbd5e1', background: 'white', color: '#1e1b4b',
+                  fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                Télécharger CSV (.csv)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportReleve('excel')}
+                style={{
+                  width: '100%', padding: '0.65rem 1rem', borderRadius: '8px', border: 'none',
+                  background: '#1e1b4b', color: 'white', fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                Télécharger Excel (.xls)
+              </button>
+            </div>
           </div>
 
         </div>
 
       </div>
 
-      {/* Detail Modal */}
       {isDetailModalOpen && selectedHeure && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '12px', width: '100%', maxWidth: '500px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
@@ -346,7 +525,6 @@ const EtudiantHeures = () => {
         </div>
       )}
 
-      {/* Declare Modal */}
       {isDeclareModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '12px', width: '100%', maxWidth: '500px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
@@ -357,32 +535,43 @@ const EtudiantHeures = () => {
               </button>
             </div>
             <form onSubmit={handleDeclareSubmit} style={{ padding: '1.5rem' }}>
+              {declareError && (
+                <div style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: '#fef2f2', color: '#b91c1c', borderRadius: '8px', fontSize: '0.9rem' }}>
+                  {declareError}
+                </div>
+              )}
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#334155', marginBottom: '0.5rem' }}>Matière enseignée</label>
-                <select required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                  <option value="">Sélectionnez une matière...</option>
-                  <option value="maths">Mathématiques</option>
-                  <option value="dev">Développement Web</option>
-                  <option value="bdd">Base de Données</option>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#334155', marginBottom: '0.5rem' }}>Séance à déclarer</label>
+                <select
+                  required
+                  value={selectedSessionId}
+                  onChange={(e) => setSelectedSessionId(e.target.value)}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                >
+                  <option value="">Sélectionnez une séance assignée...</option>
+                  {declarables.map((s) => (
+                    <option key={s.sessionId} value={s.sessionId}>{s.label}</option>
+                  ))}
                 </select>
+                {declarables.length === 0 && (
+                  <p style={{ margin: '0.5rem 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                    Aucune séance assignée disponible. Le responsable doit d&apos;abord vous assigner une séance.
+                  </p>
+                )}
               </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#334155', marginBottom: '0.5rem' }}>Date de la séance</label>
-                <input type="date" required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
-              </div>
-              <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#334155', marginBottom: '0.5rem' }}>Heure début</label>
-                  <input type="time" required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+              {selectedDeclarable && (
+                <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.9rem', color: '#475569' }}>
+                  <div><strong>Matière :</strong> {selectedDeclarable.matiere}</div>
+                  <div><strong>Date :</strong> {selectedDeclarable.dateLabel}</div>
+                  <div><strong>Horaire :</strong> {selectedDeclarable.horaire}</div>
+                  <div><strong>Durée :</strong> {selectedDeclarable.durationHours}h</div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#334155', marginBottom: '0.5rem' }}>Heure fin</label>
-                  <input type="time" required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
-                </div>
-              </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
                 <button type="button" onClick={() => setIsDeclareModalOpen(false)} style={{ padding: '0.5rem 1rem', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer' }}>Annuler</button>
-                <button type="submit" style={{ padding: '0.5rem 1rem', backgroundColor: '#1e1b4b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Soumettre</button>
+                <button type="submit" disabled={declaring || !selectedSessionId} style={{ padding: '0.5rem 1rem', backgroundColor: '#1e1b4b', color: 'white', border: 'none', borderRadius: '6px', cursor: declaring ? 'wait' : 'pointer', opacity: declaring || !selectedSessionId ? 0.7 : 1 }}>
+                  {declaring ? 'Envoi…' : 'Soumettre'}
+                </button>
               </div>
             </form>
           </div>

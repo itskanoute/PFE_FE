@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Briefcase, Star, Clock, Edit2, Trash2, PlusCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { useOutletContext } from 'react-router-dom';
 import {
   getResponsableOffers,
   createResponsableOffer,
@@ -9,6 +10,7 @@ import {
 import './responsable.css';
 
 const ResponsableOffres = () => {
+  const { searchTerm = '' } = useOutletContext() || {};
   const [offresList, setOffresList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -16,6 +18,16 @@ const ResponsableOffres = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('create');
   const [formData, setFormData] = useState({ matiere: '', description: '', places: 1, grade_requise: '' });
+
+  const filteredOffres = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return offresList;
+    return offresList.filter((o) =>
+      (o.matiere || o.titre || '').toLowerCase().includes(q) ||
+      (o.description || '').toLowerCase().includes(q) ||
+      (o.niveau || o.level || '').toLowerCase().includes(q)
+    );
+  }, [offresList, searchTerm]);
 
   const loadOffers = useCallback(async () => {
     setLoading(true);
@@ -109,7 +121,11 @@ const ResponsableOffres = () => {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
-          {offresList.map((offre) => (
+          {filteredOffres.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--resp-text-light)' }}>
+              {searchTerm.trim() ? 'Aucune offre ne correspond à la recherche.' : 'Aucune offre pour le moment.'}
+            </div>
+          ) : filteredOffres.map((offre) => (
             <div key={offre.id} style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid var(--resp-border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className="resp-card-hover">
 
               <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--resp-border)' }}>

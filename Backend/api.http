@@ -164,3 +164,85 @@ Authorization: Bearer {{loginAdmin.response.body.token}}
 
 GET {{baseUrl}}/api/admin/school
 Authorization: Bearer {{loginAdmin.response.body.token}}
+
+###
+
+### ─── Étudiant (token étudiant requis) ────────────────────
+
+# Login étudiant
+# @name loginEtudiant
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "lea.martin@escp.eu",
+  "password": "Password123!"
+}
+
+###
+
+GET {{baseUrl}}/api/etudiant/dashboard
+Authorization: Bearer {{loginEtudiant.response.body.token}}
+
+###
+
+GET {{baseUrl}}/api/etudiant/offres
+Authorization: Bearer {{loginEtudiant.response.body.token}}
+
+###
+
+GET {{baseUrl}}/api/etudiant/candidatures
+Authorization: Bearer {{loginEtudiant.response.body.token}}
+
+###
+
+POST {{baseUrl}}/api/etudiant/candidatures
+Authorization: Bearer {{loginEtudiant.response.body.token}}
+Content-Type: application/json
+
+{
+  "offreId": 1,
+  "phone": "06 12 34 56 78",
+  "grade": 15.5,
+  "motivation": "Je souhaite postuler car j'ai une bonne maîtrise de SQL.",
+  "cvAttached": true
+}
+
+###
+
+GET {{baseUrl}}/api/etudiant/seances
+Authorization: Bearer {{loginEtudiant.response.body.token}}
+
+###
+
+# Annuler une séance (remplacer 1 par l'id) — motif obligatoire, J-1 min
+POST {{baseUrl}}/api/etudiant/seances/1/cancel
+Authorization: Bearer {{loginEtudiant.response.body.token}}
+Content-Type: application/json
+
+{
+  "motif": "Problème de transport, je ne pourrai pas assurer le tutorat."
+}
+
+###
+
+GET {{baseUrl}}/api/etudiant/heures
+Authorization: Bearer {{loginEtudiant.response.body.token}}
+
+###
+
+GET {{baseUrl}}/api/etudiant/profil
+Authorization: Bearer {{loginEtudiant.response.body.token}}
+
+###
+
+PUT {{baseUrl}}/api/etudiant/profil
+Authorization: Bearer {{loginEtudiant.response.body.token}}
+Content-Type: application/json
+
+{
+  "phone": "06 12 34 56 78",
+  "titulaire": "Léa Martin",
+  "iban": "FR7612345678901234567890123",
+  "bic": "BNPAFRPP"
+}

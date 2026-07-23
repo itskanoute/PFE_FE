@@ -155,6 +155,7 @@ CREATE TABLE applications (
   motivation          TEXT NOT NULL,
   grade_obtained      DECIMAL(4, 2) NULL,
   availability        JSON NULL COMMENT 'Créneaux préférés (ex: lundi_matin, mardi_aprem)',
+  cv_url              VARCHAR(500) NULL COMMENT 'Chemin relatif du CV PDF uploadé',
   status              ENUM('pending', 'accepted', 'rejected', 'withdrawn') NOT NULL DEFAULT 'pending',
   rejection_reason    VARCHAR(255) NULL,
   reviewer_comment    TEXT NULL,

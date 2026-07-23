@@ -18,16 +18,47 @@ export function splitFullName(fullName) {
   };
 }
 
-/** Normalise le domaine email : "@escp.eu" ou "escp.eu" → "escp.eu" */
+/**
+ * Normalise le domaine email institutionnel.
+ * Accepte : "escp.eu", "@escp.eu", ou une adresse complète "admin@gmail.com" → "gmail.com"
+ */
 export function normalizeEmailDomain(domain) {
-  return domain.trim().replace(/^@+/, '').toLowerCase();
+  let value = String(domain || '').trim().toLowerCase().replace(/^@+/, '');
+
+  // Si l'utilisateur a collé une adresse complète (ex: kanoutecoumba00@gmail.com)
+  if (value.includes('@')) {
+    value = value.split('@').pop();
+  }
+
+  return value;
 }
 
-/** Vérifie que l'email appartient au domaine de l'école */
+/** Domaines toujours acceptés en plus du domaine école (tests / Gmail). */
+const EXTRA_ALLOWED_DOMAINS = ['gmail.com'];
+
+/**
+ * Vérifie que l'email appartient au domaine de l'école
+ * OU à un domaine de test autorisé (gmail.com).
+ */
 export function emailMatchesDomain(email, domain) {
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedDomain = normalizeEmailDomain(domain);
-  return normalizedEmail.endsWith(`@${normalizedDomain}`);
+  if (!normalizedEmail.includes('@')) return false;
+
+  const allowed = new Set(
+    [normalizedDomain, ...EXTRA_ALLOWED_DOMAINS].filter(Boolean)
+  );
+
+  return [...allowed].some((d) => normalizedEmail.endsWith(`@${d}`));
+}
+
+/** Texte d'aide pour les messages d'erreur (domaine école + gmail). */
+export function allowedEmailDomainsLabel(domain) {
+  const primary = normalizeEmailDomain(domain);
+  const extras = EXTRA_ALLOWED_DOMAINS.filter((d) => d !== primary);
+  if (!primary) return extras.map((d) => `@${d}`).join(' ou ');
+  if (extras.length === 0) return `@${primary}`;
+  return `@${primary} ou ${extras.map((d) => `@${d}`).join(' ou ')}`;
 }
 
 export function validatePassword(password, confirmPassword) {
